@@ -1,31 +1,37 @@
 {
   "project_info": {
     "project_number": "398094677564",
+    "firebase_url": "https://isa-estudos-default-rtdb.firebaseio.com",
     "project_id": "isa-estudos",
     "storage_bucket": "isa-estudos.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:398094677564:android:0000000000000000000000",
+        "mobilesdk_app_id": "1:398094677564:android:37720d83de242940f5b539",
         "android_client_info": {
           "package_name": "br.com.isa.rotinaestudos"
         }
       },
       "oauth_client": [
         {
-          "client_id": "398094677564-PLACEHOLDER.apps.googleusercontent.com",
+          "client_id": "398094677564-phc2r04blbi07kfndv3m033qjm5cceg0.apps.googleusercontent.com",
           "client_type": 3
         }
       ],
       "api_key": [
         {
-          "current_key": "AIzaSyCBER-n9CjrJG-UzQc7t3rXB1uHDmbD-XY"
+          "current_key": "AIzaSyBZmi8EqJYP4L7R8l4HO99w6KfB2kmBB1s"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "398094677564-phc2r04blbi07kfndv3m033qjm5cceg0.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
