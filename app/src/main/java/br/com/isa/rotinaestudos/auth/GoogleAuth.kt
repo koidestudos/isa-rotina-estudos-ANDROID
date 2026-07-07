@@ -90,9 +90,7 @@ object GoogleAuth {
     }
 
     private fun buildSignInWithGoogleRequest(webClientId: String): GetCredentialRequest {
-        val option = GetSignInWithGoogleOption.Builder()
-            .setServerClientId(webClientId)
-            .build()
+        val option = GetSignInWithGoogleOption.Builder(webClientId).build()
         return GetCredentialRequest.Builder()
             .addCredentialOption(option)
             .build()

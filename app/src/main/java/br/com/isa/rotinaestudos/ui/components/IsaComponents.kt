@@ -85,6 +85,7 @@ import br.com.isa.rotinaestudos.ui.theme.IsaCoinText
 import br.com.isa.rotinaestudos.ui.theme.IsaG1
 import br.com.isa.rotinaestudos.ui.theme.IsaG2
 import br.com.isa.rotinaestudos.ui.theme.IsaG3
+import br.com.isa.rotinaestudos.ui.theme.IsaG4
 import br.com.isa.rotinaestudos.ui.theme.IsaOrange
 import br.com.isa.rotinaestudos.ui.theme.IsaPillShape
 import br.com.isa.rotinaestudos.ui.theme.IsaPurple
