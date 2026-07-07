@@ -762,7 +762,7 @@ fun RankingScreen(state: IsaUiState, currentUid: String?, vm: IsaViewModel) {
                 val isMe = u.uid == currentUid
                 val medal = isaRankingMedal(i + 1)
                 Card(
-                    modifier = Modifier.clickable { if (!isMe && u.uid.isNotBlank()) vm.viewUserProfile(u.uid) },
+                    modifier = Modifier.clickable { if (u.uid.isNotBlank()) vm.viewUserProfile(u.uid) },
                     shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(
                         containerColor = if (isMe) IsaG2.copy(0.12f) else MaterialTheme.colorScheme.surface
@@ -904,7 +904,30 @@ fun ProfileScreen(state: IsaUiState, vm: IsaViewModel) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 StatBox("🔥", "${profile?.streak ?: 0}", "Sequência", Modifier.weight(1f))
                 StatBox("🪙", "${profile?.coins ?: 0}", "Moedas", Modifier.weight(1f))
+            }
+        }
+        item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                StatBox("🏆", state.myRankPosition ?: "—", "Ranking", Modifier.weight(1f))
+                StatBox("📅", joinedLabel(profile?.joinedAt), "Entrada", Modifier.weight(1f))
+            }
+        }
+        item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 StatBox("⏱️", formatStudyTime(profile?.totalStudySeconds ?: 0), "Estudo", Modifier.weight(1f))
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(0.5f),
+                    modifier = Modifier.weight(1f).clickable {
+                        profile?.uid?.let { vm.viewUserProfile(it) }
+                    }
+                ) {
+                    Column(Modifier.padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("👁️", fontSize = 20.sp)
+                        Text("Ver perfil", fontWeight = FontWeight.Black, fontSize = 13.sp, color = IsaG1)
+                        Text("como outros veem", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
             }
         }
         if (!state.isGuest) {

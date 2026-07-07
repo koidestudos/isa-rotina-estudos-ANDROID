@@ -53,6 +53,36 @@ data class FriendEntry(
     val name: String = ""
 )
 
+data class StudyingNowInfo(
+    val active: Boolean = false,
+    val mode: String = "study",
+    val motivation: String = "",
+    val since: String = "",
+    val elapsedSecs: Int = 0
+)
+
+data class StudyingActiveUser(
+    val uid: String = "",
+    val name: String = "",
+    val photoURL: String = "",
+    val motivation: String = "",
+    val mode: String = "study",
+    val since: String = "",
+    val elapsedBase: Int = 0,
+    val equippedItems: Map<String, Any> = emptyMap(),
+    val lastOnline: String = ""
+)
+
+data class ChatSummary(
+    val id: String = "",
+    val participants: List<String> = emptyList(),
+    val participantNames: Map<String, String> = emptyMap(),
+    val lastMessage: String = "",
+    val chatApproved: Boolean = false,
+    val hasPending: Boolean = false,
+    val updatedAt: Long = 0L
+)
+
 data class CalendarEvent(
     val date: String = "",
     val title: String = "",

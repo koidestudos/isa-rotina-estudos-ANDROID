@@ -81,16 +81,20 @@ fun FullAdminScreen(state: IsaUiState, vm: IsaViewModel) {
     var tab by remember { mutableIntStateOf(0) }
     Column {
         TabRow(selectedTabIndex = tab) {
-            Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Usuários", fontSize = 11.sp) })
-            Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Moderação", fontSize = 11.sp) })
-            Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text("Comunicados", fontSize = 11.sp) })
-            Tab(selected = tab == 3, onClick = { tab = 3 }, text = { Text("Calendário", fontSize = 11.sp) })
+            Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Usuários", fontSize = 10.sp) })
+            Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Moderação", fontSize = 10.sp) })
+            Tab(selected = tab == 2, onClick = { tab = 2 }, text = { Text("Comunicados", fontSize = 10.sp) })
+            Tab(selected = tab == 3, onClick = { tab = 3 }, text = { Text("Eventos", fontSize = 10.sp) })
+            Tab(selected = tab == 4, onClick = { tab = 4 }, text = { Text("SOEP", fontSize = 10.sp) })
+            Tab(selected = tab == 5, onClick = { tab = 5; vm.refreshAdminChats() }, text = { Text("Chats", fontSize = 10.sp) })
         }
         when (tab) {
             0 -> AdminUsersTab(vm)
             1 -> AdminModerationTab(state, vm)
             2 -> AdminComunicadosTab(state, vm)
             3 -> AdminScreen(state, vm)
+            4 -> AdminSoepTab(state, vm)
+            5 -> AdminChatsTab(state, vm)
         }
     }
 }
@@ -149,6 +153,63 @@ private fun AdminComunicadosTab(state: IsaUiState, vm: IsaViewModel) {
 }
 
 @Composable
+private fun AdminSoepTab(state: IsaUiState, vm: IsaViewModel) {
+    var email by remember { mutableStateOf("") }
+    Column(Modifier.verticalScroll(rememberScrollState()).padding(8.dp)) {
+        Text("E-mails das contas SOEP", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = IsaG1)
+        OutlinedTextField(value = email, onValueChange = { email = it }, label = { Text("Novo e-mail SOEP") }, modifier = Modifier.fillMaxWidth())
+        IsaPrimaryButton(text = "Adicionar e-mail", onClick = { vm.adminAddSoepEmail(email); email = "" })
+        Spacer(Modifier.height(12.dp))
+        state.soepEmails.forEachIndexed { i, e ->
+            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(e, modifier = Modifier.weight(1f), fontSize = 12.sp)
+                TextButton(onClick = { vm.adminRemoveSoepEmail(i) }) { Text("🗑") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AdminChatsTab(state: IsaUiState, vm: IsaViewModel) {
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(8.dp)) {
+        if (state.adminChats.isEmpty()) {
+            item { IsaEmptyState("💬", "Sem chats", "Nenhuma conversa registrada.") }
+        } else {
+            items(state.adminChats) { chat ->
+                Card(colors = CardDefaults.cardColors(containerColor = if (chat.hasPending) IsaRed.copy(0.08f) else MaterialTheme.colorScheme.surface)) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text(chat.participantNames.values.joinToString(" ↔ "), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        Text(chat.lastMessage.ifBlank { "Sem mensagens" }, fontSize = 12.sp, maxLines = 2)
+                        Text(
+                            if (chat.chatApproved) "✅ Aprovado" else if (chat.hasPending) "⏳ Pendente" else "Chat",
+                            fontSize = 10.sp,
+                            color = if (chat.chatApproved) IsaG2 else IsaRed
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ChatScreen(state: IsaUiState) {
+    Column(Modifier.padding(8.dp)) {
+        IsaSectionCard("💬 Chat") {
+            Text(
+                "Converse com amigos e com a SOEP pelo site. No app você pode ver avisos de moderação em ⋯ Mais → Ocorrências.",
+                fontSize = 13.sp,
+                lineHeight = 20.sp
+            )
+            if (!state.isGuest) {
+                Spacer(Modifier.height(8.dp))
+                Text("Amigos: ${state.profile?.friends?.size ?: 0}", fontSize = 12.sp, color = IsaG2, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
 fun ChangePasswordSheet(onDone: (String) -> Unit) {
     var current by remember { mutableStateOf("") }
     var newPass by remember { mutableStateOf("") }
@@ -179,23 +240,6 @@ fun ChangePasswordSheet(onDone: (String) -> Unit) {
             }
         )
     }
-}
-
-@Composable
-fun ViewUserProfileSheet(profile: UserProfile?, onDismiss: () -> Unit) {
-    if (profile == null) return
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(profile.name, fontWeight = FontWeight.Black) },
-        text = {
-            Column {
-                Text("🔥 ${profile.streak} dias · 🪙 ${profile.coins} moedas", fontSize = 13.sp)
-                if (profile.bio.isNotBlank()) Text(profile.bio, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
-                Text(profile.userSeries.ifBlank { "Série não informada" }, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Fechar") } }
-    )
 }
 
 @Composable

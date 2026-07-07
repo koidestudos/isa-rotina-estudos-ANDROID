@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -66,7 +68,7 @@ import br.com.isa.rotinaestudos.ui.theme.IsaPurple
 // ─── MÉTODOS + RECOMENDAÇÕES ────────────────────────────────────────────────
 
 @Composable
-fun MethodsScreen(methods: List<String>, recommendations: List<String>) {
+fun MethodsScreen(methods: List<String>, recommendations: List<String>, revisions: List<RevisionEntry> = emptyList()) {
     LazyColumn(
         verticalArrangement = Arrangement.spacedBy(12.dp),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp)
@@ -84,13 +86,24 @@ fun MethodsScreen(methods: List<String>, recommendations: List<String>) {
             }
         }
         item {
-            IsaSectionCard("💡 Recomendações") {
+            IsaSectionCard("📋 Recomendações Personalizadas") {
                 if (recommendations.isEmpty()) {
-                    Text("Recomendações aparecem após gerar sua rotina.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                    Text("Suas recomendações aparecerão aqui após o quiz.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                 } else {
                     recommendations.forEach { r ->
-                        MethodCard(r)
-                        Spacer(Modifier.height(8.dp))
+                        Text("• ${stripHtml(r)}", fontSize = 13.sp, lineHeight = 20.sp, modifier = Modifier.padding(vertical = 4.dp))
+                    }
+                }
+            }
+        }
+        if (revisions.isNotEmpty()) {
+            item {
+                IsaSectionCard("🔁 Revisões Espaçadas") {
+                    revisions.forEach { rev ->
+                        Column(Modifier.padding(vertical = 6.dp)) {
+                            Text(rev.subject, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = IsaG1)
+                            Text("+1: ${rev.day1} · +7: ${rev.day7} · +30: ${rev.day30}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
             }
@@ -514,6 +527,234 @@ private fun formatTotalSeconds(sec: Long): String {
     val h = sec / 3600
     val m = (sec % 3600) / 60
     return if (h > 0) "${h}h ${m}min" else "${m}min"
+}
+
+@Composable
+fun StudyingScreen(state: IsaUiState, vm: IsaViewModel) {
+    val session = state.studyTimerSeconds
+    val total = state.profile?.totalStudySeconds ?: 0L
+    val h = session / 3600
+    val m = (session % 3600) / 60
+    val s = session % 60
+    val display = "%02d:%02d:%02d".format(h, m, s)
+    val today = IsaViewModel.todayKey()
+    val todayLearnings = state.profile?.learningHistory?.filter { it.date == today } ?: emptyList()
+
+    LaunchedEffect(Unit) {
+        vm.loadDailyLearningDraft()
+    }
+
+    LazyColumn(
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp)
+    ) {
+        item {
+            IsaSectionCard("⏱️ Cronômetro de Estudos") {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        display,
+                        fontSize = 44.sp,
+                        fontWeight = FontWeight.Black,
+                        color = if (state.studyTimerMode == "paused") MaterialTheme.colorScheme.onSurfaceVariant else IsaG1
+                    )
+                    Text("Tempo total: ${formatTotalSeconds(total)}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Spacer(Modifier.height(12.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        IsaGoldButton(
+                            text = when (state.studyTimerMode) {
+                                "idle" -> "▶ Estudar"
+                                "paused" -> "▶ Continuar"
+                                else -> "▶ Estudar"
+                            },
+                            onClick = vm::startStudyTimer,
+                            modifier = Modifier.weight(1f),
+                            enabled = state.studyTimerMode != "study"
+                        )
+                        IsaPrimaryButton(
+                            text = if (state.studyTimerMode == "paused") "▶ Continuar" else "⏸ Pausar",
+                            onClick = vm::pauseStudyTimer,
+                            modifier = Modifier.weight(1f),
+                            enabled = state.studyTimerMode != "idle"
+                        )
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    IsaPrimaryButton(text = "⏹ Parar", onClick = vm::stopStudyTimer, enabled = state.studyTimerMode != "idle")
+                }
+            }
+        }
+        item {
+            IsaSectionCard("💪 Motivação") {
+                OutlinedTextField(
+                    value = state.motivationDraft,
+                    onValueChange = vm::updateMotivationDraft,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Insira algo motivador aqui") },
+                    placeholder = { Text("Ex: Vou passar no vestibular!") }
+                )
+                Spacer(Modifier.height(8.dp))
+                IsaPrimaryButton(text = "💾 Salvar motivação", onClick = vm::saveStudyMotivation)
+            }
+        }
+        item {
+            IsaSectionCard("👥 Estudando agora") {
+                if (state.isGuest) {
+                    Text("Conecte-se para ver quem está estudando.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else if (state.studyActive.isEmpty()) {
+                    Text("Ninguém estudando agora. Seja o primeiro!", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    state.studyActive.forEach { user ->
+                        StudyActiveRow(user)
+                        Spacer(Modifier.height(8.dp))
+                    }
+                }
+            }
+        }
+        item {
+            IsaSectionCard("📝 O que aprendi hoje") {
+                OutlinedTextField(
+                    value = state.dailyLearningDraft,
+                    onValueChange = vm::updateDailyLearningDraft,
+                    modifier = Modifier.fillMaxWidth().height(120.dp),
+                    label = { Text("Escreva o que aprendeu") }
+                )
+                Spacer(Modifier.height(8.dp))
+                IsaPrimaryButton(text = "💾 Salvar", onClick = vm::saveDailyLearning)
+            }
+        }
+        item {
+            IsaSectionCard("📚 Aprendizagens do dia") {
+                if (todayLearnings.isEmpty()) {
+                    Text("Salve o que aprendeu hoje acima.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    todayLearnings.forEach { entry ->
+                        Column(Modifier.padding(vertical = 6.dp)) {
+                            Text(entry.title.ifBlank { "Aprendizado" }, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text(entry.text, fontSize = 12.sp, lineHeight = 18.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StudyActiveRow(user: br.com.isa.rotinaestudos.data.model.StudyingActiveUser) {
+    var elapsed = user.elapsedBase
+    if (user.mode == "study" && user.since.isNotBlank()) {
+        try {
+            val sinceMs = java.time.Instant.parse(user.since).toEpochMilli()
+            elapsed += ((System.currentTimeMillis() - sinceMs) / 1000).toInt().coerceAtLeast(0)
+        } catch (_: Exception) { }
+    }
+    val timerText = if (user.mode == "paused") "⏸ Pausado" else "⏱ ${formatTimerDisplay(elapsed)}"
+    Card(shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = IsaG4.copy(0.35f))) {
+        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(shape = CircleShape, modifier = Modifier.size(40.dp), color = IsaG2.copy(0.15f)) {
+                Box(contentAlignment = Alignment.Center) {
+                    if (user.photoURL.isNotBlank()) {
+                        coil.compose.AsyncImage(
+                            model = user.photoURL,
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize().clip(CircleShape),
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop
+                        )
+                    } else {
+                        Text(user.name.firstOrNull()?.uppercase() ?: "?", fontWeight = FontWeight.Black, color = IsaG1)
+                    }
+                }
+            }
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(user.name, fontWeight = FontWeight.Black, fontSize = 14.sp)
+                Text(timerText, fontSize = 12.sp, color = IsaG2, fontWeight = FontWeight.Bold)
+                if (user.motivation.isNotBlank()) {
+                    Text("\"${user.motivation}\"", fontSize = 11.sp, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+    }
+}
+
+private fun formatTimerDisplay(secs: Int): String {
+    val h = secs / 3600
+    val m = (secs % 3600) / 60
+    val s = secs % 60
+    return if (h > 0) "%02d:%02d:%02d".format(h, m, s) else "%02d:%02d".format(m, s)
+}
+
+@Composable
+fun MaisScreen(state: IsaUiState, vm: IsaViewModel, onOpen: (br.com.isa.rotinaestudos.ui.OverlaySheet) -> Unit) {
+    var selectedLearning by remember { mutableStateOf<br.com.isa.rotinaestudos.data.model.LearningEntry?>(null) }
+    val learnings = state.profile?.learningHistory?.sortedByDescending { it.date }?.take(30) ?: emptyList()
+
+    if (selectedLearning != null) {
+        Column(Modifier.verticalScroll(rememberScrollState())) {
+            TextButton(onClick = { selectedLearning = null }) { Text("← Voltar") }
+            IsaSectionCard(selectedLearning!!.title.ifBlank { "Aprendizado" }) {
+                Text(selectedLearning!!.text, fontSize = 14.sp, lineHeight = 22.sp)
+                Text(selectedLearning!!.date.replace("-", "/"), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+            }
+        }
+        return
+    }
+
+    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        item {
+            Text("Ferramentas extras", fontWeight = FontWeight.Black, color = IsaG1, fontSize = 16.sp)
+            Text("Como no site ISA Rotina de Estudos", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MaisToolButton("💬", "Chat", Modifier.weight(1f)) { onOpen(br.com.isa.rotinaestudos.ui.OverlaySheet.CHAT) }
+                MaisToolButton("🛍️", "Loja", Modifier.weight(1f)) { onOpen(br.com.isa.rotinaestudos.ui.OverlaySheet.LOJA) }
+            }
+        }
+        item {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MaisToolButton("📊", "Notas", Modifier.weight(1f)) { onOpen(br.com.isa.rotinaestudos.ui.OverlaySheet.NOTAS) }
+                MaisToolButton("💡", "Dicas", Modifier.weight(1f)) { onOpen(br.com.isa.rotinaestudos.ui.OverlaySheet.DICAS) }
+            }
+        }
+        item {
+            MaisToolButton("⚠️", "Ocorrências / Meus avisos", Modifier.fillMaxWidth()) {
+                vm.showWarningsPopup()
+            }
+        }
+        item {
+            IsaSectionCard("📚 Aprendizagens") {
+                if (learnings.isEmpty()) {
+                    Text("Nenhuma aprendizagem registrada ainda.", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    learnings.forEach { entry ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { selectedLearning = entry },
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Column(Modifier.padding(12.dp)) {
+                                Text(entry.title.ifBlank { "Aprendizado" }, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                Text(entry.date.replace("-", "/"), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MaisToolButton(icon: String, label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    Card(
+        modifier = modifier.clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = IsaG2.copy(0.1f))
+    ) {
+        Column(Modifier.padding(16.dp).fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(icon, fontSize = 28.sp)
+            Text(label, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = IsaG1)
+        }
+    }
 }
 
 private fun stripHtml(html: String): String = html

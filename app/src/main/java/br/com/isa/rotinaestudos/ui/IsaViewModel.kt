@@ -10,8 +10,14 @@ import br.com.isa.rotinaestudos.data.model.ScheduleBlock
 import br.com.isa.rotinaestudos.data.model.SubjectDifficulty
 import br.com.isa.rotinaestudos.data.model.TimeSlot
 import br.com.isa.rotinaestudos.data.model.UserProfile
+import br.com.isa.rotinaestudos.data.model.StudyingActiveUser
+import br.com.isa.rotinaestudos.data.model.StudyingNowInfo
+import br.com.isa.rotinaestudos.data.model.LearningEntry
+import br.com.isa.rotinaestudos.data.model.ChatSummary
 import br.com.isa.rotinaestudos.data.repository.ContentRepository
+import br.com.isa.rotinaestudos.data.repository.RankHelper
 import br.com.isa.rotinaestudos.data.repository.UserRepository
+import java.time.Instant
 import br.com.isa.rotinaestudos.data.model.ExamTimelineItem
 import br.com.isa.rotinaestudos.data.model.Flashcard
 import br.com.isa.rotinaestudos.data.model.FlashcardSet
@@ -46,14 +52,18 @@ import kotlinx.coroutines.launch
 enum class MainTab(val label: String, val icon: String) {
     ROTINA("Rotina", "📅"),
     METODOS("Como Estudar", "🧠"),
-    REVISOES("Revisões", "🔁"),
     DESCANSO("Descanso", "😴"),
+    ESTUDANDO("Estudando", "📚"),
+    FLASHCARDS("Flashcards", "🃏"),
+    CALENDARIO("Calendário", "📅"),
+    AVISOS("Avisos", "📢"),
+    RANKING("Ranking", "🏆"),
     PERFIL("Perfil", "👤"),
-    RANKING("Ranking", "🏆")
+    MAIS("Mais", "⋯")
 }
 
 enum class OverlaySheet {
-    NONE, CALENDARIO, AVISOS, LOJA, DICAS, NOTAS, TIMER, SETTINGS, ADMIN, FLASHCARDS
+    NONE, CALENDARIO, AVISOS, LOJA, DICAS, NOTAS, TIMER, SETTINGS, ADMIN, FLASHCARDS, CHAT
 }
 
 data class IsaUiState(
@@ -84,7 +94,14 @@ data class IsaUiState(
     val calSelectedDay: String? = null,
     val calViewMonths: Boolean = false,
     val calNoteDraft: String = "",
-    val studyActive: List<UserProfile> = emptyList(),
+    val studyActive: List<StudyingActiveUser> = emptyList(),
+    val studyTimerMode: String = "idle",
+    val studyTimerSince: Long = 0L,
+    val myRankPosition: String? = null,
+    val soepEmails: List<String> = emptyList(),
+    val adminChats: List<ChatSummary> = emptyList(),
+    val motivationDraft: String = "",
+    val dailyLearningDraft: String = "",
     val adminMessage: String? = null,
     val isAdmin: Boolean = false,
     val activeOverlay: OverlaySheet = OverlaySheet.NONE,
@@ -120,7 +137,10 @@ class IsaViewModel : ViewModel() {
     private var lastRankingRefresh = 0L
     private var lastAnnouncementsRefresh = 0L
     private var timerJob: Job? = null
+    private var studyActiveJob: Job? = null
     private var warningsShownSession = false
+    private var studyTimerAccum = 0
+    private var studyTimerStartMs = 0L
 
     init {
         val savedDark = IsaPreferences.darkTheme
@@ -257,6 +277,168 @@ class IsaViewModel : ViewModel() {
 
     fun selectTab(tab: MainTab) {
         _state.update { it.copy(currentTab = tab) }
+        when (tab) {
+            MainTab.AVISOS -> refreshAnnouncements()
+            MainTab.CALENDARIO -> refreshCalendarData()
+            MainTab.ESTUDANDO -> {
+                val motiv = _state.value.profile?.studyMotivation ?: ""
+                _state.update { it.copy(motivationDraft = motiv) }
+                startStudyActivePolling()
+            }
+            MainTab.RANKING -> forceRefreshRanking()
+            MainTab.PERFIL -> updateMyRankPosition()
+            else -> stopStudyActivePolling()
+        }
+    }
+
+    private fun startStudyActivePolling() {
+        studyActiveJob?.cancel()
+        refreshStudyActive()
+        studyActiveJob = viewModelScope.launch {
+            while (_state.value.currentTab == MainTab.ESTUDANDO) {
+                delay(1000)
+                tickStudyActiveTimers()
+                if (System.currentTimeMillis() % 5000L < 1100L) refreshStudyActive()
+            }
+        }
+    }
+
+    private fun stopStudyActivePolling() {
+        studyActiveJob?.cancel()
+        studyActiveJob = null
+    }
+
+    fun refreshStudyActive() {
+        if (_state.value.isGuest) return
+        viewModelScope.launch {
+            try {
+                val active = userRepo.loadStudyingActive()
+                _state.update { mergeLocalStudyActive(it, active) }
+            } catch (_: Exception) { }
+        }
+    }
+
+    private fun mergeLocalStudyActive(state: IsaUiState, remote: List<StudyingActiveUser>): IsaUiState {
+        val uid = state.authUser?.uid ?: return state.copy(studyActive = remote)
+        if (state.studyTimerMode == "idle") return state.copy(studyActive = remote)
+        val local = buildLocalStudyActive(state)
+        val merged = remote.filter { it.uid != uid }.toMutableList()
+        merged.add(0, local)
+        return state.copy(studyActive = merged)
+    }
+
+    private fun buildLocalStudyActive(state: IsaUiState): StudyingActiveUser {
+        val p = state.profile
+        val elapsed = currentSessionElapsed()
+        return StudyingActiveUser(
+            uid = state.authUser?.uid ?: "",
+            name = p?.name ?: "Você",
+            photoURL = p?.photoURL ?: "",
+            motivation = state.motivationDraft.ifBlank { p?.studyMotivation ?: "" },
+            mode = state.studyTimerMode,
+            since = if (state.studyTimerMode == "study" && state.studyTimerSince > 0) {
+                Instant.ofEpochMilli(state.studyTimerSince).toString()
+            } else "",
+            elapsedBase = elapsed,
+            equippedItems = p?.equippedItems ?: emptyMap()
+        )
+    }
+
+    private fun tickStudyActiveTimers() {
+        if (_state.value.currentTab != MainTab.ESTUDANDO) return
+        val mode = _state.value.studyTimerMode
+        if (mode == "study") {
+            _state.update { s ->
+                s.copy(studyTimerSeconds = currentSessionElapsed())
+            }
+        }
+        _state.update { mergeLocalStudyActive(it, it.studyActive.filter { u -> u.uid != it.authUser?.uid }) }
+    }
+
+    private fun currentSessionElapsed(): Int {
+        var secs = studyTimerAccum
+        if (_state.value.studyTimerMode == "study" && studyTimerStartMs > 0) {
+            secs += ((System.currentTimeMillis() - studyTimerStartMs) / 1000).toInt()
+        }
+        return secs
+    }
+
+    private fun syncStudyingNow() {
+        val uid = _state.value.authUser?.uid ?: return
+        if (_state.value.isGuest) return
+        viewModelScope.launch {
+            try {
+                val mode = _state.value.studyTimerMode
+                if (mode == "idle") {
+                    userRepo.setStudyingNow(uid, null)
+                } else {
+                    userRepo.setStudyingNow(
+                        uid,
+                        StudyingNowInfo(
+                            active = true,
+                            mode = mode,
+                            motivation = _state.value.motivationDraft.ifBlank { _state.value.profile?.studyMotivation ?: "" },
+                            since = if (studyTimerStartMs > 0) Instant.ofEpochMilli(studyTimerStartMs).toString() else Instant.now().toString(),
+                            elapsedSecs = currentSessionElapsed()
+                        )
+                    )
+                }
+            } catch (_: Exception) { }
+        }
+    }
+
+    fun updateMotivationDraft(text: String) {
+        _state.update { it.copy(motivationDraft = text) }
+    }
+
+    fun saveStudyMotivation() {
+        val motiv = _state.value.motivationDraft.trim()
+        val p = _state.value.profile ?: return
+        saveProfile(p.copy(studyMotivation = motiv))
+        if (!_state.value.isGuest && _state.value.authUser != null) {
+            viewModelScope.launch {
+                try { userRepo.updateStudyMotivation(_state.value.authUser!!.uid, motiv) } catch (_: Exception) { }
+            }
+        }
+        if (_state.value.studyTimerMode != "idle") syncStudyingNow()
+        _state.update { it.copy(successMessage = "Motivação salva!") }
+    }
+
+    fun updateDailyLearningDraft(text: String) {
+        _state.update { it.copy(dailyLearningDraft = text) }
+    }
+
+    fun saveDailyLearning() {
+        val txt = _state.value.dailyLearningDraft.trim()
+        if (txt.isBlank()) {
+            _state.update { it.copy(error = "Escreva algo antes de salvar.") }
+            return
+        }
+        val p = _state.value.profile ?: return
+        val today = todayKey()
+        val title = txt.split("\\s+".toRegex()).take(5).joinToString(" ").let {
+            if (it.length > 40) it.take(40) + "…" else it.ifBlank { "Aprendizado" }
+        }
+        val entry = LearningEntry(
+            id = System.currentTimeMillis().toString(),
+            title = title,
+            text = txt,
+            date = today
+        )
+        saveProfile(p.copy(learningHistory = p.learningHistory + entry))
+        _state.update { it.copy(successMessage = "Aprendizagem registrada!", dailyLearningDraft = txt) }
+    }
+
+    fun loadDailyLearningDraft() {
+        val today = todayKey()
+        val last = _state.value.profile?.learningHistory?.filter { it.date == today }?.lastOrNull()
+        _state.update { it.copy(dailyLearningDraft = last?.text ?: "") }
+    }
+
+    fun updateMyRankPosition() {
+        val uid = _state.value.authUser?.uid
+        val pos = RankHelper.rankPosition(_state.value.ranking, uid)
+        _state.update { it.copy(myRankPosition = pos) }
     }
 
     fun openOverlay(sheet: OverlaySheet) {
@@ -354,6 +536,10 @@ class IsaViewModel : ViewModel() {
         _state.update { it.copy(showWarningsPopup = false) }
     }
 
+    fun showWarningsPopup() {
+        _state.update { it.copy(showWarningsPopup = true) }
+    }
+
     fun canChangeName(): Boolean {
         val p = _state.value.profile ?: return false
         if (p.nameLastChanged.isBlank()) return true
@@ -414,7 +600,17 @@ class IsaViewModel : ViewModel() {
     }
 
     fun viewUserProfile(uid: String) {
-        if (_state.value.isGuest) return
+        if (_state.value.isGuest) {
+            _state.value.profile?.takeIf { it.uid == uid || uid == "guest" }?.let { profile ->
+                _state.update { it.copy(viewedUser = profile) }
+            }
+            return
+        }
+        val current = _state.value.profile
+        if (current?.uid == uid) {
+            _state.update { it.copy(viewedUser = current) }
+            return
+        }
         viewModelScope.launch {
             try {
                 val user = userRepo.loadUser(uid)
@@ -737,7 +933,15 @@ class IsaViewModel : ViewModel() {
         if (now - lastRankingRefresh < 60_000) return
         lastRankingRefresh = now
         viewModelScope.launch {
-            _state.update { it.copy(ranking = userRepo.loadRanking(), rankingLastUpdate = System.currentTimeMillis()) }
+            val ranking = userRepo.loadRanking()
+            val uid = _state.value.authUser?.uid
+            _state.update {
+                it.copy(
+                    ranking = ranking,
+                    rankingLastUpdate = System.currentTimeMillis(),
+                    myRankPosition = RankHelper.rankPosition(ranking, uid)
+                )
+            }
         }
     }
 
@@ -759,8 +963,57 @@ class IsaViewModel : ViewModel() {
 
     fun loadAdminEvents() {
         viewModelScope.launch {
-            val events = contentRepo.loadAdminCalendarEvents()
-            _state.update { it.copy(adminEvents = events) }
+            try {
+                _state.update {
+                    it.copy(
+                        adminEvents = contentRepo.loadAdminCalendarEvents(),
+                        adminCalendarEvents = contentRepo.loadCalendarEvents(),
+                        soepEmails = contentRepo.loadSoepEmails(),
+                        adminChats = contentRepo.loadAdminChats()
+                    )
+                }
+            } catch (_: Exception) { }
+        }
+    }
+
+    fun adminAddSoepEmail(email: String) {
+        viewModelScope.launch {
+            try {
+                val trimmed = email.trim().lowercase()
+                if (trimmed.isBlank()) return@launch
+                val list = _state.value.soepEmails.toMutableList()
+                if (list.contains(trimmed)) {
+                    _state.update { it.copy(adminMessage = "E-mail já cadastrado.") }
+                    return@launch
+                }
+                list.add(trimmed)
+                contentRepo.saveSoepEmails(list)
+                _state.update { it.copy(soepEmails = list, adminMessage = "E-mail SOEP adicionado.") }
+            } catch (e: Exception) {
+                _state.update { it.copy(adminMessage = "Erro: ${e.message}") }
+            }
+        }
+    }
+
+    fun adminRemoveSoepEmail(index: Int) {
+        viewModelScope.launch {
+            try {
+                val list = _state.value.soepEmails.toMutableList()
+                if (index !in list.indices) return@launch
+                list.removeAt(index)
+                contentRepo.saveSoepEmails(list)
+                _state.update { it.copy(soepEmails = list, adminMessage = "E-mail removido.") }
+            } catch (e: Exception) {
+                _state.update { it.copy(adminMessage = "Erro: ${e.message}") }
+            }
+        }
+    }
+
+    fun refreshAdminChats() {
+        viewModelScope.launch {
+            try {
+                _state.update { it.copy(adminChats = contentRepo.loadAdminChats()) }
+            } catch (_: Exception) { }
         }
     }
 
@@ -1006,44 +1259,104 @@ class IsaViewModel : ViewModel() {
     }
 
     fun startStudyTimer() {
-        if (_state.value.studyTimerRunning) return
-        _state.update { it.copy(studyTimerRunning = true) }
+        val mode = _state.value.studyTimerMode
+        if (mode == "paused") {
+            studyTimerStartMs = System.currentTimeMillis()
+            _state.update { it.copy(studyTimerMode = "study", studyTimerRunning = true) }
+        } else {
+            studyTimerAccum = 0
+            studyTimerStartMs = System.currentTimeMillis()
+            _state.update { it.copy(studyTimerMode = "study", studyTimerRunning = true, studyTimerSeconds = 0, studyTimerSessionSeconds = 0) }
+        }
         timerJob?.cancel()
         timerJob = viewModelScope.launch {
             while (_state.value.studyTimerRunning) {
                 delay(1000)
-                _state.update {
-                    it.copy(
-                        studyTimerSeconds = it.studyTimerSeconds + 1,
-                        studyTimerSessionSeconds = it.studyTimerSessionSeconds + 1
-                    )
-                }
+                val elapsed = currentSessionElapsed()
+                _state.update { it.copy(studyTimerSeconds = elapsed, studyTimerSessionSeconds = elapsed) }
             }
         }
+        syncStudyingNow()
+        refreshStudyActive()
     }
 
     fun pauseStudyTimer() {
-        _state.update { it.copy(studyTimerRunning = false) }
+        if (_state.value.studyTimerMode == "paused") {
+            startStudyTimer()
+            return
+        }
+        if (studyTimerStartMs > 0) {
+            studyTimerAccum += ((System.currentTimeMillis() - studyTimerStartMs) / 1000).toInt()
+            studyTimerStartMs = 0
+        }
         timerJob?.cancel()
+        _state.update {
+            it.copy(
+                studyTimerRunning = false,
+                studyTimerMode = "paused",
+                studyTimerSeconds = studyTimerAccum,
+                studyTimerSessionSeconds = studyTimerAccum
+            )
+        }
+        syncStudyingNow()
+    }
+
+    fun stopStudyTimer() {
+        timerJob?.cancel()
+        var sessionSecs = studyTimerAccum
+        if (_state.value.studyTimerMode == "study" && studyTimerStartMs > 0) {
+            sessionSecs += ((System.currentTimeMillis() - studyTimerStartMs) / 1000).toInt()
+        }
+        studyTimerAccum = 0
+        studyTimerStartMs = 0
+        val p = _state.value.profile
+        if (p != null && sessionSecs > 0) {
+            saveProfile(p.copy(totalStudySeconds = p.totalStudySeconds + sessionSecs))
+            val mins = maxOf(1, (sessionSecs + 30) / 60)
+            _state.update {
+                it.copy(
+                    celebrationPopup = IsaPopupData("🎉", "Parabéns!", "Você estudou por $mins minuto${if (mins == 1) "" else "s"}!")
+                )
+            }
+        }
+        _state.update {
+            it.copy(
+                studyTimerRunning = false,
+                studyTimerMode = "idle",
+                studyTimerSeconds = 0,
+                studyTimerSessionSeconds = 0
+            )
+        }
+        syncStudyingNow()
+        refreshStudyActive()
     }
 
     fun resetStudyTimerSession() {
         pauseStudyTimer()
-        _state.update { it.copy(studyTimerSessionSeconds = 0) }
+        studyTimerAccum = 0
+        studyTimerStartMs = 0
+        _state.update { it.copy(studyTimerSessionSeconds = 0, studyTimerSeconds = 0, studyTimerMode = "idle") }
+        syncStudyingNow()
     }
 
     fun saveStudyTimer() {
         val p = _state.value.profile ?: return
-        val session = _state.value.studyTimerSessionSeconds
+        val session = currentSessionElapsed()
         if (session <= 0) return
-        pauseStudyTimer()
+        timerJob?.cancel()
         saveProfile(p.copy(totalStudySeconds = p.totalStudySeconds + session))
+        studyTimerAccum = 0
+        studyTimerStartMs = 0
         _state.update {
             it.copy(
+                studyTimerRunning = false,
+                studyTimerMode = "idle",
                 studyTimerSessionSeconds = 0,
+                studyTimerSeconds = 0,
                 successMessage = "⏱️ ${formatSeconds(session)} registrados!"
             )
         }
+        syncStudyingNow()
     }
 
     fun clearSuccessMessage() {

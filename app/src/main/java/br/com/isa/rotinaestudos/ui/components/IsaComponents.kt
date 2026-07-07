@@ -25,11 +25,18 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.NavigationDrawerItem
+import androidx.compose.material3.NavigationDrawerItemDefaults
+import androidx.compose.material3.rememberDrawerState
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -221,7 +228,8 @@ fun IsaGamificationHeader(
     userName: String,
     coins: Int,
     streak: Int,
-    onSettingsClick: () -> Unit
+    onSettingsClick: () -> Unit,
+    onMenuClick: (() -> Unit)? = null
 ) {
     Box(
         Modifier
@@ -232,9 +240,15 @@ fun IsaGamificationHeader(
     ) {
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Surface(shape = RoundedCornerShape(10.dp), color = IsaG2, modifier = Modifier.size(40.dp)) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text("ISA", color = Color.White, fontWeight = FontWeight.Black, fontSize = 12.sp)
+                if (onMenuClick != null) {
+                    IconButton(onClick = onMenuClick) {
+                        Icon(Icons.Default.Menu, contentDescription = "Menu", tint = Color.White)
+                    }
+                } else {
+                    Surface(shape = RoundedCornerShape(10.dp), color = IsaG2, modifier = Modifier.size(40.dp)) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text("ISA", color = Color.White, fontWeight = FontWeight.Black, fontSize = 12.sp)
+                        }
                     }
                 }
                 Spacer(Modifier.width(10.dp))
@@ -261,6 +275,75 @@ fun IsaGamificationHeader(
                 Text("🪙 $coins", color = IsaCoinText, fontWeight = FontWeight.Black, fontSize = 14.sp)
                 Text("🔥 $streak dias", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 Text(userName, color = Color.White.copy(0.9f), fontWeight = FontWeight.SemiBold, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+}
+
+@Composable
+fun IsaSidebarHost(
+    selected: MainTab,
+    isAdmin: Boolean,
+    onSelect: (MainTab) -> Unit,
+    onClassApp: () -> Unit,
+    onAdmin: () -> Unit,
+    drawerState: androidx.compose.material3.DrawerState,
+    header: @Composable (onMenuClick: () -> Unit) -> Unit,
+    body: @Composable () -> Unit
+) {
+    val scope = rememberCoroutineScope()
+    val tabs = MainTab.entries
+
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            Column(
+                Modifier
+                    .fillMaxWidth(0.88f)
+                    .background(MaterialTheme.colorScheme.surface)
+                    .padding(vertical = 20.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                Text("ISA Estudos", fontWeight = FontWeight.Black, fontSize = 18.sp, color = IsaG1, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+                tabs.forEach { tab ->
+                    NavigationDrawerItem(
+                        label = { Text("${tab.icon} ${tab.label}", fontSize = 14.sp, fontWeight = if (tab == selected) FontWeight.Black else FontWeight.SemiBold) },
+                        selected = tab == selected,
+                        onClick = {
+                            onSelect(tab)
+                            scope.launch { drawerState.close() }
+                        },
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 1.dp),
+                        colors = NavigationDrawerItemDefaults.colors(selectedContainerColor = IsaG2.copy(0.18f))
+                    )
+                }
+                if (isAdmin) {
+                    NavigationDrawerItem(
+                        label = { Text("🛡️ Painel Admin", fontSize = 14.sp, fontWeight = FontWeight.Bold) },
+                        selected = false,
+                        onClick = {
+                            onAdmin()
+                            scope.launch { drawerState.close() }
+                        },
+                        modifier = Modifier.padding(horizontal = 12.dp)
+                    )
+                }
+                Spacer(Modifier.height(16.dp))
+                IsaPrimaryButton(
+                    text = "📱 ClassApp",
+                    onClick = {
+                        onClassApp()
+                        scope.launch { drawerState.close() }
+                    },
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+            }
+        }
+    ) {
+        Column(Modifier.fillMaxSize()) {
+            header { scope.launch { drawerState.open() } }
+            Box(Modifier.weight(1f).padding(horizontal = 16.dp)) {
+                body()
             }
         }
     }
@@ -517,5 +600,6 @@ fun overlayTitle(sheet: OverlaySheet): String = when (sheet) {
     OverlaySheet.SETTINGS -> "⚙️ Configurações"
     OverlaySheet.ADMIN -> "🛡️ Admin"
     OverlaySheet.FLASHCARDS -> "🃏 Flashcards"
+    OverlaySheet.CHAT -> "💬 Chat"
     OverlaySheet.NONE -> ""
 }

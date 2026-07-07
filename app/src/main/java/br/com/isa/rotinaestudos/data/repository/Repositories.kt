@@ -7,8 +7,11 @@ import br.com.isa.rotinaestudos.data.model.GradesConfig
 import br.com.isa.rotinaestudos.data.model.SubjectGrades
 import br.com.isa.rotinaestudos.data.model.Flashcard
 import br.com.isa.rotinaestudos.data.model.FlashcardSet
+import br.com.isa.rotinaestudos.data.model.ChatSummary
 import br.com.isa.rotinaestudos.data.model.FriendEntry
 import br.com.isa.rotinaestudos.data.model.LearningEntry
+import br.com.isa.rotinaestudos.data.model.StudyingActiveUser
+import br.com.isa.rotinaestudos.data.model.StudyingNowInfo
 import br.com.isa.rotinaestudos.data.model.QuizAnswer
 import br.com.isa.rotinaestudos.data.model.ScheduleBlock
 import br.com.isa.rotinaestudos.data.model.SubjectDifficulty
@@ -20,7 +23,22 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.tasks.await
 
+@Suppress("UNCHECKED_CAST")
+private fun parseStudyingNow(raw: Any?): StudyingNowInfo? {
+    val m = raw as? Map<String, Any?> ?: return null
+    return StudyingNowInfo(
+        active = m["active"] as? Boolean ?: false,
+        mode = m["mode"] as? String ?: "study",
+        motivation = m["motivation"] as? String ?: "",
+        since = m["since"] as? String ?: "",
+        elapsedSecs = (m["elapsedSecs"] as? Number)?.toInt() ?: 0
+    )
+}
+
 object FirestoreMapper {
+
+    @Suppress("UNCHECKED_CAST")
+    fun parseEquippedItemsPublic(raw: Any?): Map<String, Any> = parseEquippedItems(raw)
 
     @Suppress("UNCHECKED_CAST")
     fun fromDocument(doc: DocumentSnapshot): UserProfile {
@@ -289,6 +307,25 @@ object FirestoreMapper {
     }
 }
 
+object RankHelper {
+    fun score(profile: UserProfile): Long =
+        profile.streak.toLong() * 1_000_000_000L + profile.coins
+
+    fun sort(users: List<UserProfile>): List<UserProfile> =
+        users.filter { !it.banned }.sortedByDescending { score(it) }
+
+    fun rankPosition(users: List<UserProfile>, uid: String?): String? {
+        if (uid.isNullOrBlank()) return null
+        val sorted = sort(users).take(30)
+        val idx = sorted.indexOfFirst { it.uid == uid }
+        return when {
+            idx >= 0 -> "${idx + 1}º lugar"
+            sorted.isNotEmpty() -> "Fora do top 30"
+            else -> null
+        }
+    }
+}
+
 class UserRepository(private val db: FirebaseFirestore) {
     suspend fun loadUser(uid: String): UserProfile? {
         val doc = db.collection("users").document(uid).get().await()
@@ -303,8 +340,63 @@ class UserRepository(private val db: FirebaseFirestore) {
 
     suspend fun loadRanking(): List<UserProfile> {
         val snap = db.collection("users").limit(50).get().await()
-        return snap.documents.map { FirestoreMapper.fromDocument(it) }
-            .sortedByDescending { (it.streak * 1_000_000_000L) + it.coins }
+        return RankHelper.sort(snap.documents.map { FirestoreMapper.fromDocument(it) }).take(30)
+    }
+
+    suspend fun loadStudyingActive(): List<StudyingActiveUser> {
+        val snap = db.collection("users").limit(100).get().await()
+        return snap.documents.mapNotNull { doc ->
+            val d = doc.data ?: return@mapNotNull null
+            if (d["banned"] == true) return@mapNotNull null
+            val studying = parseStudyingNow(d["studyingNow"]) ?: return@mapNotNull null
+            if (!studying.active) return@mapNotNull null
+            StudyingActiveUser(
+                uid = doc.id,
+                name = d["name"] as? String ?: "Estudante",
+                photoURL = d["photoURL"] as? String ?: "",
+                motivation = studying.motivation.ifBlank { d["studyMotivation"] as? String ?: "" },
+                mode = studying.mode,
+                since = studying.since,
+                elapsedBase = studying.elapsedSecs,
+                equippedItems = FirestoreMapper.parseEquippedItemsPublic(d["equippedItems"]),
+                lastOnline = d["lastOnline"]?.toString() ?: d["updatedAt"]?.toString() ?: ""
+            )
+        }
+    }
+
+    suspend fun setStudyingNow(uid: String, info: StudyingNowInfo?) {
+        val ref = db.collection("users").document(uid)
+        if (info == null || !info.active) {
+            ref.update(
+                mapOf(
+                    "studyingNow" to FieldValue.delete(),
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+            ).await()
+        } else {
+            ref.set(
+                mapOf(
+                    "studyingNow" to mapOf(
+                        "active" to true,
+                        "mode" to info.mode,
+                        "motivation" to info.motivation,
+                        "since" to info.since,
+                        "elapsedSecs" to info.elapsedSecs
+                    ),
+                    "updatedAt" to FieldValue.serverTimestamp()
+                ),
+                com.google.firebase.firestore.SetOptions.merge()
+            ).await()
+        }
+    }
+
+    suspend fun updateStudyMotivation(uid: String, motivation: String) {
+        db.collection("users").document(uid).update(
+            mapOf(
+                "studyMotivation" to motivation,
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+        ).await()
     }
 
     suspend fun findByEmail(email: String): UserProfile? {
@@ -431,5 +523,48 @@ class ContentRepository(private val db: FirebaseFirestore) {
                 "createdAt" to FieldValue.serverTimestamp()
             )
         ).await()
+    }
+
+    suspend fun loadSoepEmails(): List<String> {
+        return try {
+            val doc = db.collection("app_config").document("soep").get().await()
+            val emails = doc.data?.get("emails") as? List<String>
+            if (!emails.isNullOrEmpty()) emails else listOf("tiagogamerplayer133@gmail.com")
+        } catch (_: Exception) {
+            listOf("tiagogamerplayer133@gmail.com")
+        }
+    }
+
+    suspend fun saveSoepEmails(emails: List<String>) {
+        db.collection("app_config").document("soep").set(
+            mapOf("emails" to emails, "updatedAt" to FieldValue.serverTimestamp()),
+            com.google.firebase.firestore.SetOptions.merge()
+        ).await()
+    }
+
+    suspend fun loadAdminChats(): List<ChatSummary> {
+        val snap = try {
+            db.collection("chats").orderBy("updatedAt").limit(40).get().await()
+        } catch (_: Exception) {
+            db.collection("chats").limit(40).get().await()
+        }
+        return snap.documents.map { doc ->
+            val d = doc.data ?: emptyMap()
+            val ts = d["updatedAt"]
+            val millis = when (ts) {
+                is Timestamp -> ts.toDate().time
+                else -> 0L
+            }
+            @Suppress("UNCHECKED_CAST")
+            ChatSummary(
+                id = doc.id,
+                participants = (d["participants"] as? List<String>) ?: emptyList(),
+                participantNames = (d["participantNames"] as? Map<String, String>) ?: emptyMap(),
+                lastMessage = d["lastMessage"] as? String ?: "",
+                chatApproved = d["chatApproved"] as? Boolean ?: false,
+                hasPending = d["hasPending"] as? Boolean ?: false,
+                updatedAt = millis
+            )
+        }.sortedByDescending { it.updatedAt }
     }
 }
