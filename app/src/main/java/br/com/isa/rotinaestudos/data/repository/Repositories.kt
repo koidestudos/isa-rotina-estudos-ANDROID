@@ -2,6 +2,9 @@ package br.com.isa.rotinaestudos.data.repository
 
 import br.com.isa.rotinaestudos.data.model.Announcement
 import br.com.isa.rotinaestudos.data.model.CalendarEvent
+import br.com.isa.rotinaestudos.data.model.ExamTimelineItem
+import br.com.isa.rotinaestudos.data.model.GradesConfig
+import br.com.isa.rotinaestudos.data.model.SubjectGrades
 import br.com.isa.rotinaestudos.data.model.Flashcard
 import br.com.isa.rotinaestudos.data.model.FlashcardSet
 import br.com.isa.rotinaestudos.data.model.FriendEntry
@@ -37,6 +40,7 @@ object FirestoreMapper {
             hasRoutine = d["hasRoutine"] as? Boolean ?: false,
             savedSchedule = parseSchedule(d["savedSchedule"]),
             routineName = d["routineName"] as? String ?: "Sua Rotina Personalizada",
+            nameLastChanged = d["nameLastChanged"] as? String ?: "",
             userSeries = d["userSeries"] as? String ?: "",
             totalStudySeconds = (d["totalStudySeconds"] as? Number)?.toLong() ?: 0L,
             studyMotivation = d["studyMotivation"] as? String ?: "",
@@ -44,8 +48,10 @@ object FirestoreMapper {
             learningHistory = parseLearningHistory(d["learningHistory"]),
             friends = parseFriends(d["friends"]),
             ownedItems = (d["ownedItems"] as? List<String>) ?: emptyList(),
-            equippedItems = (d["equippedItems"] as? Map<String, String>) ?: emptyMap(),
+            equippedItems = parseEquippedItems(d["equippedItems"]),
             mascotData = (d["mascotData"] as? Map<String, Any>) ?: mapOf("xp" to 0, "level" to 1),
+            gradesConfig = parseGradesConfig(d["gradesConfig"]),
+            gradesData = parseGradesData(d["gradesData"]),
             banned = d["banned"] as? Boolean ?: false,
             banReason = d["banReason"] as? String ?: "",
             warnings = (d["warnings"] as? List<Map<String, String>>) ?: emptyList()
@@ -68,6 +74,7 @@ object FirestoreMapper {
             blocks.map { b -> b.toMap() }
         },
         "routineName" to profile.routineName,
+        "nameLastChanged" to profile.nameLastChanged,
         "userSeries" to profile.userSeries,
         "totalStudySeconds" to profile.totalStudySeconds,
         "studyMotivation" to profile.studyMotivation,
@@ -77,6 +84,8 @@ object FirestoreMapper {
         "ownedItems" to profile.ownedItems,
         "equippedItems" to profile.equippedItems,
         "mascotData" to profile.mascotData,
+        "gradesConfig" to profile.gradesConfig?.toMap(),
+        "gradesData" to profile.gradesData.mapValues { (_, g) -> g.toMap() },
         "lastOnline" to FieldValue.serverTimestamp(),
         "updatedAt" to FieldValue.serverTimestamp()
     )
@@ -164,6 +173,64 @@ object FirestoreMapper {
     }
 
     @Suppress("UNCHECKED_CAST")
+    private fun parseEquippedItems(raw: Any?): Map<String, Any> {
+        val map = raw as? Map<String, Any?> ?: return emptyMap()
+        return map.mapNotNull { (k, v) ->
+            when (v) {
+                is List<*> -> k to v.filterIsInstance<String>()
+                is String -> k to v
+                else -> v?.let { k to it }
+            }
+        }.toMap()
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun parseGradesConfig(raw: Any?): GradesConfig? {
+        val m = raw as? Map<String, Any?> ?: return null
+        return GradesConfig(
+            setupDone = m["setupDone"] as? Boolean ?: false,
+            style = m["style"] as? String ?: "isa",
+            minAvg = (m["minAvg"] as? Number)?.toDouble() ?: 7.0,
+            examNames = (m["examNames"] as? List<String>) ?: emptyList(),
+            timeline = (m["timeline"] as? List<Map<String, Any?>>)?.map {
+                ExamTimelineItem(
+                    id = it["id"] as? String ?: "",
+                    type = it["type"] as? String ?: "",
+                    name = it["name"] as? String ?: ""
+                )
+            } ?: emptyList(),
+            subjects = (m["subjects"] as? List<String>) ?: emptyList()
+        )
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun parseGradesData(raw: Any?): Map<String, SubjectGrades> {
+        val map = raw as? Map<String, Map<String, Any?>> ?: return emptyMap()
+        return map.mapValues { (_, v) ->
+            SubjectGrades(
+                exams = (v["exams"] as? Map<String, String>) ?: emptyMap(),
+                recoveries = (v["recoveries"] as? Map<String, String>) ?: emptyMap(),
+                provaFinal = v["provaFinal"] as? String ?: ""
+            )
+        }
+    }
+
+    private fun GradesConfig.toMap(): Map<String, Any?> = mapOf(
+        "setupDone" to setupDone,
+        "style" to style,
+        "minAvg" to minAvg,
+        "examNames" to examNames,
+        "timeline" to timeline.map { mapOf("id" to it.id, "type" to it.type, "name" to it.name) },
+        "subjects" to subjects
+    )
+
+    private fun SubjectGrades.toMap(): Map<String, Any?> = mapOf(
+        "exams" to exams,
+        "recoveries" to recoveries,
+        "provaFinal" to provaFinal
+    )
+
+    @Suppress("UNCHECKED_CAST")
     private fun parseFriends(raw: Any?): List<FriendEntry> {
         val list = raw as? List<Map<String, Any?>> ?: return emptyList()
         return list.map {
@@ -239,6 +306,58 @@ class UserRepository(private val db: FirebaseFirestore) {
         return snap.documents.map { FirestoreMapper.fromDocument(it) }
             .sortedByDescending { (it.streak * 1_000_000_000L) + it.coins }
     }
+
+    suspend fun findByEmail(email: String): UserProfile? {
+        val snap = db.collection("users").whereEqualTo("email", email.trim().lowercase()).limit(1).get().await()
+        return snap.documents.firstOrNull()?.let { FirestoreMapper.fromDocument(it) }
+    }
+
+    suspend fun adminUpdateCoinsStreak(uid: String, coins: Int?, streak: Int?) {
+        val updates = mutableMapOf<String, Any>("updatedAt" to FieldValue.serverTimestamp())
+        if (coins != null) updates["coins"] = coins
+        if (streak != null) updates["streak"] = streak
+        db.collection("users").document(uid).update(updates).await()
+    }
+
+    suspend fun adminBanUser(uid: String, reason: String, adminEmail: String) {
+        db.collection("users").document(uid).update(
+            mapOf(
+                "banned" to true,
+                "banReason" to reason.ifBlank { "Violou as regras do app." },
+                "bannedAt" to java.time.Instant.now().toString(),
+                "bannedBy" to adminEmail,
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+        ).await()
+    }
+
+    suspend fun adminUnbanUser(uid: String) {
+        db.collection("users").document(uid).update(
+            mapOf(
+                "banned" to false,
+                "banReason" to "",
+                "bannedAt" to "",
+                "bannedBy" to "",
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+        ).await()
+    }
+
+    suspend fun adminSendWarning(uid: String, message: String, adminName: String, adminEmail: String) {
+        val entry = mapOf(
+            "message" to message,
+            "adminName" to adminName,
+            "adminEmail" to adminEmail,
+            "createdAt" to java.time.Instant.now().toString()
+        )
+        db.collection("users").document(uid).update(
+            mapOf(
+                "warnings" to FieldValue.arrayUnion(entry),
+                "warningCount" to FieldValue.increment(1),
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+        ).await()
+    }
 }
 
 class ContentRepository(private val db: FirebaseFirestore) {
@@ -302,5 +421,15 @@ class ContentRepository(private val db: FirebaseFirestore) {
             db.collection("calendar_events").limit(200).get().await()
         }
         return snap.documents.map { FirestoreMapper.calendarEventFrom(it) }
+    }
+
+    suspend fun addAnnouncement(message: String, adminName: String) {
+        db.collection("announcements").add(
+            mapOf(
+                "message" to message,
+                "adminName" to adminName,
+                "createdAt" to FieldValue.serverTimestamp()
+            )
+        ).await()
     }
 }

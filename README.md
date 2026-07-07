@@ -16,6 +16,7 @@ Aplicativo **nativo** Android (Kotlin + Jetpack Compose + Firebase) do projeto [
 | Avisos, ranking, perfil, série escolar | ✅ |
 | Admin — eventos (admin + escolar) | ✅ |
 | Flashcards (visualizar conjuntos da nuvem) | ✅ parcial |
+| UI profissional (tema web, abas, FABs) | ✅ |
 | Chat, loja, timer estudando | 🔜 próximas versões |
 
 ## Publicar no GitHub

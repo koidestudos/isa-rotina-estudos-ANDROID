@@ -15,6 +15,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "398094677564-89kg4a9ifefdbr7bfgafrckb53qvghlr.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "br.com.isa.rotinaestudos",
+            "certificate_hash": "dac4a297a03d83df3c32030ff2da3433b52caa9a"
+          }
+        },
+        {
           "client_id": "398094677564-phc2r04blbi07kfndv3m033qjm5cceg0.apps.googleusercontent.com",
           "client_type": 3
         }

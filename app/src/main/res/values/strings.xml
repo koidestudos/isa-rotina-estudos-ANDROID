@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">ISA Rotina</string>
+    <string name="default_web_client_id">398094677564-phc2r04blbi07kfndv3m033qjm5cceg0.apps.googleusercontent.com</string>
 </resources>
