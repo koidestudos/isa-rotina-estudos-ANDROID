@@ -1,6 +1,7 @@
 package br.com.isa.rotinaestudos.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -22,6 +23,7 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -194,23 +196,6 @@ private fun AdminChatsTab(state: IsaUiState, vm: IsaViewModel) {
 }
 
 @Composable
-fun ChatScreen(state: IsaUiState) {
-    Column(Modifier.padding(8.dp)) {
-        IsaSectionCard("💬 Chat") {
-            Text(
-                "Converse com amigos e com a SOEP pelo site. No app você pode ver avisos de moderação em ⋯ Mais → Ocorrências.",
-                fontSize = 13.sp,
-                lineHeight = 20.sp
-            )
-            if (!state.isGuest) {
-                Spacer(Modifier.height(8.dp))
-                Text("Amigos: ${state.profile?.friends?.size ?: 0}", fontSize = 12.sp, color = IsaG2, fontWeight = FontWeight.Bold)
-            }
-        }
-    }
-}
-
-@Composable
 fun ChangePasswordSheet(onDone: (String) -> Unit) {
     var current by remember { mutableStateOf("") }
     var newPass by remember { mutableStateOf("") }
@@ -244,13 +229,18 @@ fun ChangePasswordSheet(onDone: (String) -> Unit) {
 }
 
 @Composable
-fun AvisosFullScreen(state: IsaUiState) {
-    var tab by remember { mutableIntStateOf(0) }
+fun AvisosFullScreen(state: IsaUiState, vm: IsaViewModel) {
+    var tab by remember { mutableIntStateOf(if (state.avisosShowWarnings) 1 else 0) }
     val warnings = state.profile?.warnings ?: emptyList()
-    Column {
+
+    LaunchedEffect(state.avisosShowWarnings) {
+        if (state.avisosShowWarnings) tab = 1
+    }
+
+    Column(Modifier.fillMaxSize()) {
         TabRow(selectedTabIndex = tab) {
-            Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text("Comunicados") })
-            Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Meus avisos (${warnings.size})") })
+            Tab(selected = tab == 0, onClick = { tab = 0; vm.clearAvisosWarningsTab() }, text = { Text("Comunicados") })
+            Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text("Ocorrências (${warnings.size})") })
         }
         if (tab == 0) AvisosScreen(state) else WarningsList(warnings)
     }
@@ -258,7 +248,11 @@ fun AvisosFullScreen(state: IsaUiState) {
 
 @Composable
 private fun WarningsList(warnings: List<Map<String, String>>) {
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    LazyColumn(
+        modifier = Modifier.padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 12.dp)
+    ) {
         if (warnings.isEmpty()) {
             item { IsaEmptyState("📋", "Nenhum aviso", "Você não recebeu avisos da moderação.") }
         } else {

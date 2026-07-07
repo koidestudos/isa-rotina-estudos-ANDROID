@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import br.com.isa.rotinaestudos.ui.components.IsaLogo
 import br.com.isa.rotinaestudos.ui.components.IsaGoldButton
 import br.com.isa.rotinaestudos.ui.components.IsaHeroBackground
 import br.com.isa.rotinaestudos.ui.components.IsaPrimaryButton
@@ -78,7 +79,7 @@ fun IntroScreen(onStartQuiz: () -> Unit) {
         ) {
             Card(shape = IsaCardShape, elevation = CardDefaults.cardElevation(12.dp), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("📋", fontSize = 48.sp)
+                    IsaLogo(size = 72.dp)
                     Spacer(Modifier.height(12.dp))
                     Text("Questionário ISA", fontWeight = FontWeight.Black, fontSize = 20.sp, color = IsaG1)
                     Spacer(Modifier.height(16.dp))

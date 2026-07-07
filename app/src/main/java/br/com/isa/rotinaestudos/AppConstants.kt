@@ -7,9 +7,11 @@ object AppConstants {
     )
 
     val SERIES_OPTIONS = listOf(
-        "6º Ano", "7º Ano", "8º Ano", "9º Ano",
-        "1º EM", "2º EM", "3º EM", "Pré-vestibular", "Outro"
+        "1º Ano", "2º Ano", "3º Ano", "4º Ano", "5º Ano", "6º Ano",
+        "7º Ano", "8º Ano", "9º Ano", "1º EM", "2º EM", "3º EM"
     )
+
+    const val CLASSAPP_PACKAGE = "br.com.classapp.ClassApp"
 
     val DAYS = listOf("SEG", "TER", "QUA", "QUI", "SEX", "SÁB", "DOM")
 

@@ -66,6 +66,12 @@ fun UserProfileFullScreen(
     val accessories = (equipped["accessories"] as? List<*>)?.filterIsInstance<String>() ?: emptyList()
     val mascotLevel = (profile.mascotData["level"] as? Number)?.toInt() ?: 1
     val mascotXp = (profile.mascotData["xp"] as? Number)?.toInt() ?: 0
+    val effectId = equipped["effect"] as? String
+    val effectItem = effectId?.let { ShopCatalog.byId[it] }
+    val trophyId = equipped["trophy"] as? String
+    val medalId = equipped["medal"] as? String
+    val funnyId = equipped["funny"] as? String
+    val nameGlow = equipped["nameGlow"] as? String
 
     Column(
         Modifier
@@ -128,6 +134,7 @@ fun UserProfileFullScreen(
                                         ShopCatalog.byId[id]?.icon?.let { append("$it ") }
                                     }
                                     append(profile.name.ifBlank { "Estudante" })
+                                    if (nameGlow != null) append(" ✨")
                                 },
                                 fontWeight = FontWeight.Black,
                                 fontSize = 20.sp,
@@ -199,6 +206,22 @@ fun UserProfileFullScreen(
                                 Text("${item.icon} ${item.name}", Modifier.padding(horizontal = 10.dp, vertical = 6.dp), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                         }
+                    }
+                }
+            }
+
+            if (effectItem != null || trophyId != null || medalId != null || funnyId != null || accessories.isNotEmpty()) {
+                IsaSectionCard("✨ Personalização") {
+                    effectItem?.let { Text("${it.icon} ${it.name}", fontSize = 13.sp, modifier = Modifier.padding(vertical = 3.dp)) }
+                    trophyId?.let { ShopCatalog.byId[it] }?.let { Text("${it.icon} ${it.name}", fontSize = 13.sp, modifier = Modifier.padding(vertical = 3.dp)) }
+                    medalId?.let { ShopCatalog.byId[it] }?.let { Text("${it.icon} ${it.name}", fontSize = 13.sp, modifier = Modifier.padding(vertical = 3.dp)) }
+                    funnyId?.let { ShopCatalog.byId[it] }?.let { Text("${it.icon} ${it.name}", fontSize = 13.sp, modifier = Modifier.padding(vertical = 3.dp)) }
+                    if (accessories.isNotEmpty()) {
+                        Text(
+                            accessories.mapNotNull { ShopCatalog.byId[it]?.icon }.joinToString(" "),
+                            fontSize = 18.sp,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
                     }
                 }
             }

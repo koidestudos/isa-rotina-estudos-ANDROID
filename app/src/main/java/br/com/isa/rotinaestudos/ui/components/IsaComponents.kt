@@ -1,7 +1,19 @@
 package br.com.isa.rotinaestudos.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.offset
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.Dp
+import br.com.isa.rotinaestudos.R
+import coil.compose.AsyncImage
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -95,6 +107,53 @@ fun IsaHeroBackground(modifier: Modifier = Modifier, content: @Composable () -> 
 }
 
 @Composable
+fun IsaLogo(modifier: Modifier = Modifier, size: Dp = 44.dp) {
+    Image(
+        painter = painterResource(R.drawable.isa_logo),
+        contentDescription = "ISA Estudos",
+        modifier = modifier
+            .size(size)
+            .clip(CircleShape)
+            .shadow(4.dp, CircleShape),
+        contentScale = ContentScale.Crop
+    )
+}
+
+@Composable
+fun IsaAvatar(
+    name: String,
+    photoUrl: String,
+    modifier: Modifier = Modifier,
+    size: Dp = 44.dp,
+    borderColor: Color = IsaG2
+) {
+    Surface(
+        shape = CircleShape,
+        modifier = modifier.size(size).border(2.dp, borderColor, CircleShape),
+        color = IsaG4,
+        shadowElevation = 2.dp
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            if (photoUrl.isNotBlank()) {
+                AsyncImage(
+                    model = photoUrl,
+                    contentDescription = name,
+                    modifier = Modifier.fillMaxSize().clip(CircleShape),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Text(
+                    name.firstOrNull()?.uppercase() ?: "?",
+                    fontWeight = FontWeight.Black,
+                    fontSize = (size.value * 0.38f).sp,
+                    color = IsaG1
+                )
+            }
+        }
+    }
+}
+
+@Composable
 fun IsaBootScreen() {
     IsaHeroBackground {
         Column(
@@ -102,15 +161,12 @@ fun IsaBootScreen() {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = IsaG2,
-                modifier = Modifier.size(72.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text("ISA", color = Color.White, fontWeight = FontWeight.Black, fontSize = 22.sp)
-                }
-            }
+            val scale by animateFloatAsState(
+                targetValue = 1f,
+                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+                label = "logoScale"
+            )
+            IsaLogo(Modifier.scale(scale), size = 88.dp)
             Spacer(Modifier.height(20.dp))
             CircularProgressIndicator(color = Color.White, strokeWidth = 3.dp, modifier = Modifier.size(36.dp))
             Spacer(Modifier.height(16.dp))
@@ -241,17 +297,10 @@ fun IsaGamificationHeader(
     ) {
         Column {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (onMenuClick != null) {
-                    IconButton(onClick = onMenuClick) {
-                        Icon(Icons.Default.Menu, contentDescription = "Menu", tint = Color.White)
-                    }
-                } else {
-                    Surface(shape = RoundedCornerShape(10.dp), color = IsaG2, modifier = Modifier.size(40.dp)) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text("ISA", color = Color.White, fontWeight = FontWeight.Black, fontSize = 12.sp)
-                        }
-                    }
+                IconButton(onClick = { onMenuClick?.invoke() }) {
+                    Icon(Icons.Default.Menu, contentDescription = "Menu", tint = Color.White, modifier = Modifier.size(26.dp))
                 }
+                IsaLogo(size = 40.dp)
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text(title, color = Color.White, fontWeight = FontWeight.Black, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -297,53 +346,76 @@ fun IsaSidebarHost(
 
     ModalNavigationDrawer(
         drawerState = drawerState,
+        gesturesEnabled = false,
         drawerContent = {
-            Column(
-                Modifier
-                    .fillMaxWidth(0.88f)
-                    .background(MaterialTheme.colorScheme.surface)
-                    .padding(vertical = 20.dp)
-                    .verticalScroll(rememberScrollState())
+            ModalDrawerSheet(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(300.dp)
+                    .statusBarsPadding()
+                    .navigationBarsPadding(),
+                drawerContainerColor = MaterialTheme.colorScheme.surface
             ) {
-                Text("ISA Estudos", fontWeight = FontWeight.Black, fontSize = 18.sp, color = IsaG1, modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
-                tabs.forEach { tab ->
-                    NavigationDrawerItem(
-                        label = { Text("${tab.icon} ${tab.label}", fontSize = 14.sp, fontWeight = if (tab == selected) FontWeight.Black else FontWeight.SemiBold) },
-                        selected = tab == selected,
+                Column(Modifier.fillMaxHeight()) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .background(IsaHeroGradient)
+                            .padding(horizontal = 20.dp, vertical = 18.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IsaLogo(size = 52.dp)
+                        Spacer(Modifier.width(12.dp))
+                        Column {
+                            Text("ISA Estudos", fontWeight = FontWeight.Black, fontSize = 17.sp, color = Color.White)
+                            Text("Rotina personalizada", fontSize = 11.sp, color = Color.White.copy(0.85f))
+                        }
+                    }
+                    Column(
+                        Modifier
+                            .weight(1f)
+                            .verticalScroll(rememberScrollState())
+                            .padding(vertical = 8.dp)
+                    ) {
+                        tabs.forEach { tab ->
+                            NavigationDrawerItem(
+                                label = { Text("${tab.icon} ${tab.label}", fontSize = 14.sp, fontWeight = if (tab == selected) FontWeight.Black else FontWeight.SemiBold) },
+                                selected = tab == selected,
+                                onClick = {
+                                    onSelect(tab)
+                                    scope.launch { drawerState.close() }
+                                },
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 1.dp),
+                                colors = NavigationDrawerItemDefaults.colors(selectedContainerColor = IsaG2.copy(0.18f))
+                            )
+                        }
+                        if (isAdmin) {
+                            NavigationDrawerItem(
+                                label = { Text("🛡️ Painel Admin", fontSize = 14.sp, fontWeight = FontWeight.Bold) },
+                                selected = false,
+                                onClick = {
+                                    onAdmin()
+                                    scope.launch { drawerState.close() }
+                                },
+                                modifier = Modifier.padding(horizontal = 12.dp)
+                            )
+                        }
+                    }
+                    IsaPrimaryButton(
+                        text = "📱 ClassApp",
                         onClick = {
-                            onSelect(tab)
+                            onClassApp()
                             scope.launch { drawerState.close() }
                         },
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 1.dp),
-                        colors = NavigationDrawerItemDefaults.colors(selectedContainerColor = IsaG2.copy(0.18f))
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp)
                     )
                 }
-                if (isAdmin) {
-                    NavigationDrawerItem(
-                        label = { Text("🛡️ Painel Admin", fontSize = 14.sp, fontWeight = FontWeight.Bold) },
-                        selected = false,
-                        onClick = {
-                            onAdmin()
-                            scope.launch { drawerState.close() }
-                        },
-                        modifier = Modifier.padding(horizontal = 12.dp)
-                    )
-                }
-                Spacer(Modifier.height(16.dp))
-                IsaPrimaryButton(
-                    text = "📱 ClassApp",
-                    onClick = {
-                        onClassApp()
-                        scope.launch { drawerState.close() }
-                    },
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                )
             }
         }
     ) {
         Column(Modifier.fillMaxSize()) {
             header { scope.launch { drawerState.open() } }
-            Box(Modifier.weight(1f).padding(horizontal = 16.dp)) {
+            Box(Modifier.weight(1f)) {
                 body()
             }
         }

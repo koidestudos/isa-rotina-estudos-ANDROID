@@ -68,8 +68,9 @@ import br.com.isa.rotinaestudos.ui.theme.IsaPurple
 // ─── MÉTODOS + RECOMENDAÇÕES ────────────────────────────────────────────────
 
 @Composable
-fun MethodsScreen(methods: List<String>, recommendations: List<String>, revisions: List<RevisionEntry> = emptyList()) {
+fun MethodsScreen(methods: List<String>, recommendations: List<String>) {
     LazyColumn(
+        modifier = Modifier.padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp)
     ) {
@@ -92,18 +93,6 @@ fun MethodsScreen(methods: List<String>, recommendations: List<String>, revision
                 } else {
                     recommendations.forEach { r ->
                         Text("• ${stripHtml(r)}", fontSize = 13.sp, lineHeight = 20.sp, modifier = Modifier.padding(vertical = 4.dp))
-                    }
-                }
-            }
-        }
-        if (revisions.isNotEmpty()) {
-            item {
-                IsaSectionCard("🔁 Revisões Espaçadas") {
-                    revisions.forEach { rev ->
-                        Column(Modifier.padding(vertical = 6.dp)) {
-                            Text(rev.subject, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = IsaG1)
-                            Text("+1: ${rev.day1} · +7: ${rev.day7} · +30: ${rev.day30}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
                     }
                 }
             }
@@ -545,6 +534,7 @@ fun StudyingScreen(state: IsaUiState, vm: IsaViewModel) {
     }
 
     LazyColumn(
+        modifier = Modifier.padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp)
     ) {
@@ -699,7 +689,11 @@ fun MaisScreen(state: IsaUiState, vm: IsaViewModel, onOpen: (br.com.isa.rotinaes
         return
     }
 
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    LazyColumn(
+        modifier = Modifier.padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp)
+    ) {
         item {
             Text("Ferramentas extras", fontWeight = FontWeight.Black, color = IsaG1, fontSize = 16.sp)
             Text("Como no site ISA Rotina de Estudos", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -718,7 +712,7 @@ fun MaisScreen(state: IsaUiState, vm: IsaViewModel, onOpen: (br.com.isa.rotinaes
         }
         item {
             MaisToolButton("⚠️", "Ocorrências / Meus avisos", Modifier.fillMaxWidth()) {
-                vm.showWarningsPopup()
+                vm.openAvisosWarnings()
             }
         }
         item {

@@ -42,7 +42,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
@@ -66,7 +65,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import br.com.isa.rotinaestudos.AppConstants
@@ -74,12 +74,16 @@ import br.com.isa.rotinaestudos.data.model.ScheduleBlock
 import br.com.isa.rotinaestudos.data.model.SubjectDifficulty
 import br.com.isa.rotinaestudos.data.model.TimeSlot
 import br.com.isa.rotinaestudos.auth.GoogleAuth
+import br.com.isa.rotinaestudos.data.model.Flashcard
+import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
 import br.com.isa.rotinaestudos.domain.QuizData
 import br.com.isa.rotinaestudos.domain.SchoolCalendar2026
 import br.com.isa.rotinaestudos.ui.IsaUiState
 import br.com.isa.rotinaestudos.ui.IsaViewModel
+import br.com.isa.rotinaestudos.ui.components.IsaAvatar
 import br.com.isa.rotinaestudos.ui.components.IsaEmptyState
+import br.com.isa.rotinaestudos.ui.components.IsaLogo
 import br.com.isa.rotinaestudos.ui.components.IsaGoogleButton
 import br.com.isa.rotinaestudos.ui.components.IsaGoldButton
 import br.com.isa.rotinaestudos.ui.components.IsaHeroBackground
@@ -134,11 +138,7 @@ fun AuthScreen(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
             ) {
                 Column(Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Surface(shape = RoundedCornerShape(14.dp), color = IsaG2, modifier = Modifier.size(56.dp)) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text("ISA", color = Color.White, fontWeight = FontWeight.Black, fontSize = 18.sp)
-                        }
-                    }
+                    IsaLogo(size = 64.dp)
                     Spacer(Modifier.height(12.dp))
                     Text("ISA Estudos", style = MaterialTheme.typography.headlineMedium, color = IsaG1)
                     Text("Rotina de Estudos Personalizada", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
@@ -557,7 +557,27 @@ fun TextListScreen(title: String, items: List<String>, empty: String = "Nada aqu
 @Composable
 fun CalendarScreen(state: IsaUiState, vm: IsaViewModel) {
     var calTab by remember { mutableIntStateOf(0) }
-    Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .verticalScroll(rememberScrollState())
+            .pointerInput(state.calMonth, state.calViewMonths) {
+                if (!state.calViewMonths) {
+                    var totalDrag = 0f
+                    detectHorizontalDragGestures(
+                        onDragEnd = {
+                            when {
+                                totalDrag > 80f -> vm.calNav(-1)
+                                totalDrag < -80f -> vm.calNav(1)
+                            }
+                            totalDrag = 0f
+                        },
+                        onHorizontalDrag = { _, dragAmount -> totalDrag += dragAmount }
+                    )
+                }
+            }
+    ) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = { vm.calNav(-1) }) { Text("‹", fontSize = 28.sp, fontWeight = FontWeight.Black, color = IsaG2) }
             Text(
@@ -719,25 +739,39 @@ private fun MonthPicker(state: IsaUiState, vm: IsaViewModel) {
 
 @Composable
 fun AvisosScreen(state: IsaUiState) {
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(0.dp)
+    ) {
         if (state.announcements.isEmpty()) {
-            item { IsaEmptyState("📢", "Nenhum aviso", "Comunicados da escola aparecerão aqui.") }
+            item {
+                Box(Modifier.padding(16.dp)) {
+                    IsaEmptyState("📢", "Nenhum aviso", "Comunicados da escola aparecerão aqui.")
+                }
+            }
         } else {
             items(state.announcements) { a ->
-                Card(shape = RoundedCornerShape(16.dp), elevation = CardDefaults.cardElevation(2.dp)) {
-                    Column(Modifier.padding(16.dp)) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(
+                            Brush.horizontalGradient(
+                                listOf(IsaG1, IsaG2, Color(0xFF66BB44))
+                            )
+                        )
+                        .padding(horizontal = 20.dp, vertical = 18.dp)
+                ) {
+                    Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Surface(shape = CircleShape, color = Color(0xFFE67E22).copy(0.15f), modifier = Modifier.size(36.dp)) {
-                                Box(contentAlignment = Alignment.Center) { Text("📢", fontSize = 16.sp) }
-                            }
+                            Text("📢", fontSize = 22.sp)
                             Spacer(Modifier.width(10.dp))
                             Column {
-                                Text(a.adminName, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                Text(formatTs(a.createdAt), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(a.adminName, fontWeight = FontWeight.Black, fontSize = 14.sp, color = Color.White)
+                                Text(formatTs(a.createdAt), fontSize = 11.sp, color = Color.White.copy(0.85f))
                             }
                         }
                         Spacer(Modifier.height(10.dp))
-                        Text(a.message, lineHeight = 22.sp)
+                        Text(a.message, lineHeight = 22.sp, fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.Medium)
                     }
                 }
             }
@@ -751,7 +785,11 @@ fun RankingScreen(state: IsaUiState, currentUid: String?, vm: IsaViewModel) {
         val fmt = java.text.SimpleDateFormat("HH:mm", java.util.Locale("pt", "BR"))
         "Atualizado às ${fmt.format(java.util.Date(state.rankingLastUpdate))}"
     } else ""
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    LazyColumn(
+        modifier = Modifier.padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 12.dp)
+    ) {
         if (updatedLabel.isNotBlank()) {
             item { Text(updatedLabel, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
@@ -770,7 +808,9 @@ fun RankingScreen(state: IsaUiState, currentUid: String?, vm: IsaViewModel) {
                     border = if (isMe) androidx.compose.foundation.BorderStroke(2.dp, IsaG2.copy(0.4f)) else null
                 ) {
                     Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(medal, fontWeight = FontWeight.Black, modifier = Modifier.width(40.dp), fontSize = if (i < 3) 22.sp else 14.sp)
+                        Text(medal, fontWeight = FontWeight.Black, modifier = Modifier.width(36.dp), fontSize = if (i < 3) 22.sp else 14.sp, textAlign = TextAlign.Center)
+                        IsaAvatar(u.name, u.photoURL, size = 46.dp, borderColor = if (isMe) IsaG2 else IsaG4)
+                        Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(u.name + if (isMe) " (você)" else "", fontWeight = FontWeight.Bold)
                             Text("🔥 ${u.streak} dias · 🪙 ${u.coins} moedas", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -787,7 +827,6 @@ fun RankingScreen(state: IsaUiState, currentUid: String?, vm: IsaViewModel) {
 @Composable
 fun ProfileScreen(state: IsaUiState, vm: IsaViewModel) {
     var bio by remember(state.profile?.bio) { mutableStateOf(state.profile?.bio ?: "") }
-    var series by remember(state.profile?.userSeries) { mutableStateOf(state.profile?.userSeries ?: "") }
     var displayName by remember(state.profile?.name) { mutableStateOf(state.profile?.name ?: "") }
     val profile = state.profile
     val equipped = profile?.equippedItems ?: emptyMap()
@@ -959,19 +998,9 @@ fun ProfileScreen(state: IsaUiState, vm: IsaViewModel) {
             }
         }
         item {
-            IsaSectionCard("🎓 Série escolar") {
-                AppConstants.SERIES_OPTIONS.forEach { opt ->
-                    Row(Modifier.fillMaxWidth().clickable { series = opt }.padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        RadioButton(selected = series == opt, onClick = { series = opt })
-                        Text(opt)
-                    }
-                }
-            }
-        }
-        item {
             IsaPrimaryButton(
                 text = "Salvar perfil",
-                onClick = { vm.updateBio(bio); vm.updateSeries(series) }
+                onClick = { vm.updateBio(bio) }
             )
         }
     }
@@ -992,19 +1021,20 @@ private fun StatBox(emoji: String, value: String, label: String, modifier: Modif
 
 @Composable
 fun FlashcardsScreen(state: IsaUiState, vm: IsaViewModel) {
+    var creating by remember { mutableStateOf(false) }
     var subject by remember { mutableStateOf("") }
-    var question by remember { mutableStateOf("") }
-    var answer by remember { mutableStateOf("") }
+    var draftCards by remember { mutableStateOf(listOf(DraftFlashcard())) }
     var studyingSetId by remember { mutableStateOf<String?>(null) }
     var cardIndex by remember { mutableIntStateOf(0) }
     var showAnswer by remember { mutableStateOf(false) }
 
     val sets = state.profile?.flashcardSets ?: emptyList()
     val studySet = sets.find { it.id == studyingSetId }
+    val shuffledCards = remember(studySet?.id) { studySet?.cards?.shuffled() ?: emptyList() }
 
     if (studySet != null) {
-        val cards = studySet.cards
-        Column(Modifier.fillMaxWidth()) {
+        val cards = shuffledCards
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
             TextButton(onClick = { studyingSetId = null; cardIndex = 0; showAnswer = false }) {
                 Text("← Voltar aos conjuntos")
             }
@@ -1016,9 +1046,10 @@ fun FlashcardsScreen(state: IsaUiState, vm: IsaViewModel) {
             } else {
                 val card = cards[cardIndex.coerceIn(0, cards.lastIndex)]
                 Card(
-                    modifier = Modifier.fillMaxWidth().height(180.dp).clickable { showAnswer = !showAnswer },
+                    modifier = Modifier.fillMaxWidth().height(200.dp).clickable { showAnswer = !showAnswer },
                     shape = IsaCardShape,
-                    colors = CardDefaults.cardColors(containerColor = IsaPurple.copy(0.1f))
+                    colors = CardDefaults.cardColors(containerColor = IsaPurple.copy(0.12f)),
+                    elevation = CardDefaults.cardElevation(6.dp)
                 ) {
                     Box(Modifier.fillMaxSize().padding(20.dp), contentAlignment = Alignment.Center) {
                         Text(
@@ -1039,45 +1070,75 @@ fun FlashcardsScreen(state: IsaUiState, vm: IsaViewModel) {
                 )
                 Spacer(Modifier.height(12.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    IsaPrimaryButton(
-                        text = "← Anterior",
-                        onClick = { cardIndex = (cardIndex - 1).coerceAtLeast(0); showAnswer = false },
-                        modifier = Modifier.weight(1f),
-                        enabled = cardIndex > 0
-                    )
-                    IsaGoldButton(
-                        text = "Próximo →",
-                        onClick = { cardIndex = (cardIndex + 1).coerceAtMost(cards.lastIndex); showAnswer = false },
-                        modifier = Modifier.weight(1f),
-                        enabled = cardIndex < cards.lastIndex
-                    )
+                    if (cardIndex > 0) {
+                        IsaPrimaryButton(
+                            text = "← Anterior",
+                            onClick = { cardIndex--; showAnswer = false },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    if (cardIndex < cards.lastIndex) {
+                        IsaGoldButton(
+                            text = "Próximo →",
+                            onClick = { cardIndex++; showAnswer = false },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
                 }
             }
         }
-    } else {
-        Column(Modifier.verticalScroll(rememberScrollState())) {
-            IsaSectionCard("➕ Novo flashcard") {
-                IsaTextField(value = subject, onValueChange = { subject = it }, label = "Matéria / conjunto")
-                Spacer(Modifier.height(8.dp))
-                IsaTextField(value = question, onValueChange = { question = it }, label = "Pergunta")
-                Spacer(Modifier.height(8.dp))
-                IsaTextField(value = answer, onValueChange = { answer = it }, label = "Resposta")
-                Spacer(Modifier.height(10.dp))
+    } else if (creating) {
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
+            TextButton(onClick = { creating = false; subject = ""; draftCards = listOf(DraftFlashcard()) }) {
+                Text("← Cancelar")
+            }
+            IsaSectionCard("➕ Novo conjunto de flashcards") {
+                IsaTextField(value = subject, onValueChange = { subject = it }, label = "Nome do assunto")
+                Spacer(Modifier.height(12.dp))
+                draftCards.forEachIndexed { i, draft ->
+                    Text("Pergunta ${i + 1}", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = IsaG2)
+                    IsaTextField(value = draft.q, onValueChange = { v ->
+                        draftCards = draftCards.toMutableList().also { it[i] = it[i].copy(q = v) }
+                    }, label = "Pergunta")
+                    Spacer(Modifier.height(6.dp))
+                    IsaTextField(value = draft.a, onValueChange = { v ->
+                        draftCards = draftCards.toMutableList().also { it[i] = it[i].copy(a = v) }
+                    }, label = "Resposta")
+                    Spacer(Modifier.height(10.dp))
+                }
                 IsaPrimaryButton(
-                    text = "Adicionar cartão",
+                    text = "Adicionar pergunta +",
+                    onClick = { draftCards = draftCards + DraftFlashcard() }
+                )
+                Spacer(Modifier.height(10.dp))
+                IsaGoldButton(
+                    text = "Concluir",
                     onClick = {
-                        vm.addFlashcardSet(subject, question, answer)
-                        question = ""; answer = ""
+                        val cards = draftCards
+                            .filter { it.q.isNotBlank() }
+                            .map { Flashcard(q = it.q.trim(), a = it.a.trim()) }
+                        vm.finishFlashcardSet(subject, cards)
+                        creating = false
+                        subject = ""
+                        draftCards = listOf(DraftFlashcard())
                     },
-                    enabled = subject.isNotBlank() && question.isNotBlank()
+                    enabled = subject.isNotBlank() && draftCards.any { it.q.isNotBlank() }
                 )
             }
+        }
+    } else {
+        Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp)) {
+            IsaPrimaryButton(text = "Adicionar flashcards +", onClick = { creating = true })
             Spacer(Modifier.height(12.dp))
             if (sets.isEmpty()) {
                 IsaEmptyState("🃏", "Nenhum conjunto", "Crie seu primeiro flashcard acima!")
             } else {
                 sets.forEach { set ->
-                    Card(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
+                    Card(
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 5.dp),
+                        elevation = CardDefaults.cardElevation(3.dp)
+                    ) {
                         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                             Surface(shape = RoundedCornerShape(12.dp), color = IsaPurple.copy(0.12f), modifier = Modifier.size(48.dp)) {
                                 Box(contentAlignment = Alignment.Center) { Text("🃏", fontSize = 22.sp) }
@@ -1085,7 +1146,7 @@ fun FlashcardsScreen(state: IsaUiState, vm: IsaViewModel) {
                             Spacer(Modifier.width(12.dp))
                             Column(Modifier.weight(1f).clickable { studyingSetId = set.id; cardIndex = 0; showAnswer = false }) {
                                 Text(set.subject, fontWeight = FontWeight.Bold)
-                                Text("${set.cards.size} cartões · toque para estudar", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("${set.cards.size} cartões · ordem aleatória", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             TextButton(onClick = { vm.deleteFlashcardSet(set.id) }) { Text("🗑", fontSize = 16.sp) }
                         }
@@ -1095,6 +1156,8 @@ fun FlashcardsScreen(state: IsaUiState, vm: IsaViewModel) {
         }
     }
 }
+
+private data class DraftFlashcard(var q: String = "", var a: String = "")
 
 @Composable
 fun AdminScreen(state: IsaUiState, vm: IsaViewModel) {

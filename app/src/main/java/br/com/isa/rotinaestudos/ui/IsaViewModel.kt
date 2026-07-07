@@ -13,7 +13,9 @@ import br.com.isa.rotinaestudos.data.model.UserProfile
 import br.com.isa.rotinaestudos.data.model.StudyingActiveUser
 import br.com.isa.rotinaestudos.data.model.StudyingNowInfo
 import br.com.isa.rotinaestudos.data.model.LearningEntry
+import br.com.isa.rotinaestudos.data.model.ChatMessage
 import br.com.isa.rotinaestudos.data.model.ChatSummary
+import br.com.isa.rotinaestudos.data.repository.ChatRepository
 import br.com.isa.rotinaestudos.data.repository.ContentRepository
 import br.com.isa.rotinaestudos.data.repository.RankHelper
 import br.com.isa.rotinaestudos.data.repository.UserRepository
@@ -122,7 +124,14 @@ data class IsaUiState(
     val viewedUser: UserProfile? = null,
     val rankingLastUpdate: Long = 0L,
     val subjectBars: List<Pair<String, Int>> = emptyList(),
-    val shopThemeId: String? = null
+    val shopThemeId: String? = null,
+    val activeChatId: String? = null,
+    val chatPartnerName: String = "",
+    val chatMessages: List<ChatMessage> = emptyList(),
+    val chatApproved: Boolean = false,
+    val soepUsers: List<UserProfile> = emptyList(),
+    val userSearchResults: List<UserProfile> = emptyList(),
+    val avisosShowWarnings: Boolean = false
 )
 
 class IsaViewModel : ViewModel() {
@@ -130,6 +139,7 @@ class IsaViewModel : ViewModel() {
     private val db = FirebaseFirestore.getInstance()
     private val userRepo = UserRepository(db)
     private val contentRepo = ContentRepository(db)
+    private val chatRepo = ChatRepository(db)
 
     private val _state = MutableStateFlow(IsaUiState())
     val state: StateFlow<IsaUiState> = _state.asStateFlow()
@@ -447,8 +457,120 @@ class IsaViewModel : ViewModel() {
             OverlaySheet.AVISOS -> refreshAnnouncements()
             OverlaySheet.CALENDARIO -> refreshCalendarData()
             OverlaySheet.ADMIN -> loadAdminEvents()
+            OverlaySheet.CHAT -> loadChatHub()
             else -> {}
         }
+    }
+
+    fun openAvisosWarnings() {
+        _state.update { it.copy(currentTab = MainTab.AVISOS, avisosShowWarnings = true) }
+        refreshAnnouncements()
+    }
+
+    fun clearAvisosWarningsTab() {
+        _state.update { it.copy(avisosShowWarnings = false) }
+    }
+
+    fun loadChatHub() {
+        if (_state.value.isGuest) return
+        viewModelScope.launch {
+            try {
+                val emails = contentRepo.loadSoepEmails()
+                val soep = chatRepo.loadSoepUsers(emails)
+                _state.update { it.copy(soepUsers = soep, activeChatId = null, chatMessages = emptyList()) }
+            } catch (_: Exception) { }
+        }
+    }
+
+    fun openChatWith(partnerUid: String, partnerName: String) {
+        val me = _state.value.authUser ?: return
+        val myName = _state.value.profile?.name ?: "Eu"
+        viewModelScope.launch {
+            try {
+                val chatId = chatRepo.chatIdFor(me.uid, partnerUid)
+                chatRepo.ensureChat(me.uid, myName, partnerUid, partnerName)
+                val thread = chatRepo.loadThread(chatId)
+                _state.update {
+                    it.copy(
+                        activeChatId = chatId,
+                        chatPartnerName = partnerName,
+                        chatMessages = thread?.messages ?: emptyList(),
+                        chatApproved = thread?.chatApproved ?: false
+                    )
+                }
+            } catch (_: Exception) {
+                _state.update { it.copy(error = "Não foi possível abrir o chat.") }
+            }
+        }
+    }
+
+    fun closeChatConversation() {
+        _state.update { it.copy(activeChatId = null, chatMessages = emptyList(), chatPartnerName = "") }
+    }
+
+    fun sendChatMessage(text: String) {
+        val me = _state.value.authUser ?: return
+        val chatId = _state.value.activeChatId ?: return
+        val trimmed = text.trim()
+        if (trimmed.isBlank()) return
+        val parts = chatId.split("_")
+        val partnerUid = parts.firstOrNull { it != me.uid } ?: return
+        val myName = _state.value.profile?.name ?: "Eu"
+        val partnerName = _state.value.chatPartnerName
+        viewModelScope.launch {
+            try {
+                chatRepo.sendMessage(chatId, me.uid, myName, partnerUid, partnerName, trimmed)
+                val thread = chatRepo.loadThread(chatId)
+                _state.update {
+                    it.copy(
+                        chatMessages = thread?.messages ?: emptyList(),
+                        chatApproved = thread?.chatApproved ?: it.chatApproved
+                    )
+                }
+            } catch (_: Exception) {
+                _state.update { it.copy(error = "Erro ao enviar mensagem.") }
+            }
+        }
+    }
+
+    fun searchChatUsers(query: String) {
+        val uid = _state.value.authUser?.uid ?: return
+        viewModelScope.launch {
+            try {
+                val results = chatRepo.searchUsersByName(query, uid)
+                _state.update { it.copy(userSearchResults = results) }
+            } catch (_: Exception) { }
+        }
+    }
+
+    fun addFriend(uid: String, name: String) {
+        val p = _state.value.profile ?: return
+        if (p.friends.any { it.uid == uid }) {
+            _state.update { it.copy(successMessage = "Amigo já adicionado.") }
+            return
+        }
+        saveProfile(p.copy(friends = p.friends + br.com.isa.rotinaestudos.data.model.FriendEntry(uid, name)))
+        _state.update { it.copy(successMessage = "Amigo adicionado!", userSearchResults = emptyList()) }
+    }
+
+    fun removeFriend(uid: String) {
+        val p = _state.value.profile ?: return
+        saveProfile(p.copy(friends = p.friends.filter { it.uid != uid }))
+    }
+
+    fun finishFlashcardSet(subject: String, cards: List<Flashcard>) {
+        val p = _state.value.profile ?: return
+        if (subject.isBlank() || cards.isEmpty()) {
+            _state.update { it.copy(error = "Adicione pelo menos uma pergunta.") }
+            return
+        }
+        val set = FlashcardSet(
+            id = "fc_${System.currentTimeMillis()}",
+            subject = subject.trim(),
+            cards = cards
+        )
+        saveProfile(p.copy(flashcardSets = p.flashcardSets + set))
+        _state.update { it.copy(successMessage = "🃏 Conjunto \"${set.subject}\" criado!") }
     }
 
     fun closeOverlay() {

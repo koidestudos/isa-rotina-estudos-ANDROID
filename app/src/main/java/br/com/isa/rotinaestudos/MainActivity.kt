@@ -76,6 +76,11 @@ import br.com.isa.rotinaestudos.ui.screens.ShopScreen
 import br.com.isa.rotinaestudos.ui.screens.StudyingScreen
 import br.com.isa.rotinaestudos.ui.screens.UserProfileFullScreen
 import br.com.isa.rotinaestudos.ui.screens.ChatScreen
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.RadioButton
+import br.com.isa.rotinaestudos.AppConstants
+import br.com.isa.rotinaestudos.ui.components.IsaPrimaryButton
+import br.com.isa.rotinaestudos.ui.components.IsaSectionCard
 import br.com.isa.rotinaestudos.ui.theme.IsaTheme
 import kotlinx.coroutines.launch
 
@@ -189,12 +194,12 @@ private fun MainShell(
                 ) { tab ->
                     when (tab) {
                         MainTab.ROTINA -> RoutineScreen(state, vm)
-                        MainTab.METODOS -> MethodsScreen(state.methods, state.recommendations, state.revisions)
+                        MainTab.METODOS -> MethodsScreen(state.methods, state.recommendations)
                         MainTab.DESCANSO -> TextListScreen("😴 Plano de Descanso", state.restPlan, "Plano de descanso personalizado após o quiz.")
                         MainTab.ESTUDANDO -> StudyingScreen(state, vm)
                         MainTab.FLASHCARDS -> FlashcardsScreen(state, vm)
                         MainTab.CALENDARIO -> CalendarScreen(state, vm)
-                        MainTab.AVISOS -> AvisosFullScreen(state)
+                        MainTab.AVISOS -> AvisosFullScreen(state, vm)
                         MainTab.PERFIL -> ProfileScreen(state, vm)
                         MainTab.RANKING -> RankingScreen(state, state.authUser?.uid, vm)
                         MainTab.MAIS -> MaisScreen(state, vm, vm::openOverlay)
@@ -210,7 +215,7 @@ private fun MainShell(
             CalendarScreen(state, vm)
         }
         OverlaySheet.AVISOS -> IsaBottomSheet(overlayTitle(OverlaySheet.AVISOS), vm::closeOverlay) {
-            AvisosFullScreen(state)
+            AvisosFullScreen(state, vm)
         }
         OverlaySheet.DICAS -> IsaBottomSheet(overlayTitle(OverlaySheet.DICAS), vm::closeOverlay) {
             DicasScreen(onDone = vm::completeDica)
@@ -234,7 +239,7 @@ private fun MainShell(
             FlashcardsScreen(state, vm)
         }
         OverlaySheet.CHAT -> IsaBottomSheet(overlayTitle(OverlaySheet.CHAT), vm::closeOverlay) {
-            ChatScreen(state)
+            ChatScreen(state, vm)
         }
         OverlaySheet.NONE -> {}
     }
@@ -250,11 +255,24 @@ private fun SettingsSheet(
     val scope = rememberCoroutineScope()
     val systemDark = isSystemInDarkTheme()
     var showPassword by remember { mutableStateOf(false) }
-    Column(Modifier.verticalScroll(rememberScrollState())) {
+    var series by remember(state.profile?.userSeries) { mutableStateOf(state.profile?.userSeries ?: "") }
+    Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 4.dp)) {
         if (state.isGuest) {
             Text("👤 Modo visitante — dados salvos só neste aparelho", color = MaterialTheme.colorScheme.primary, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
         }
         RowSetting("Modo escuro", state.darkTheme ?: systemDark) { vm.setDarkTheme(it) }
+        IsaSectionCard("🎓 Série escolar") {
+            AppConstants.SERIES_OPTIONS.forEach { opt ->
+                Row(
+                    Modifier.fillMaxWidth().clickable { series = opt }.padding(vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(selected = series == opt, onClick = { series = opt })
+                    Text(opt, fontSize = 14.sp)
+                }
+            }
+            IsaPrimaryButton(text = "Salvar série", onClick = { vm.updateSeries(series) })
+        }
         if (!state.isGuest) {
             TextButton(onClick = { showPassword = true }, modifier = Modifier.padding(vertical = 4.dp)) {
                 Text("🔑 Alterar senha")
@@ -302,5 +320,16 @@ private fun RowSetting(label: String, checked: Boolean, onChange: (Boolean) -> U
 }
 
 fun openClassApp(context: android.content.Context) {
-    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://classapp.com.br")))
+    val pkg = AppConstants.CLASSAPP_PACKAGE
+    val launch = context.packageManager.getLaunchIntentForPackage(pkg)
+    if (launch != null) {
+        context.startActivity(launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    } else {
+        context.startActivity(
+            Intent(
+                Intent.ACTION_VIEW,
+                Uri.parse("https://play.google.com/store/apps/details?id=$pkg&hl=pt_BR")
+            )
+        )
+    }
 }
